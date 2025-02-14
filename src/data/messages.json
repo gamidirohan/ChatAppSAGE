@@ -1,0 +1,17 @@
+[
+    {
+      "id": "msg1",
+      "senderId": "u1",
+      "receiverId": "u2",
+      "content": "Hello Bob!",
+      "timestamp": 1699990000000
+    },
+    {
+      "id": "msg2",
+      "senderId": "u2",
+      "receiverId": "u1",
+      "content": "Hey Alice!",
+      "timestamp": 1699990001000
+    }
+  ]
+  
