@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { Message } from '@/types';
+import { formatMessageAsDocument } from '@/lib/messageProcessor';
 
 // Define the path to the messages file
 const messagesFilePath = path.join(process.cwd(), 'src', 'data', 'messages.json');
@@ -43,6 +44,58 @@ const writeMessages = (messages: Message[]) => {
   }
 };
 
+// Function to process a message as a document for the backend
+async function processMessageForBackend(message: Message) {
+  try {
+    // Format the message as a document
+    const formattedContent = formatMessageAsDocument(message);
+
+    // Create a temporary file path
+    const tempFilePath = path.join(process.cwd(), 'temp', `message-${message.id}.txt`);
+
+    // Ensure temp directory exists
+    const tempDir = path.dirname(tempFilePath);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    // Write the formatted content to a temporary file
+    fs.writeFileSync(tempFilePath, formattedContent);
+
+    // Create a form data object
+    const FormData = require('form-data');
+    const formData = new FormData();
+
+    // Add the file to the form data
+    const fileStream = fs.createReadStream(tempFilePath);
+    formData.append('file', fileStream);
+
+    // Get the FastAPI URL from environment variables
+    const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
+
+    // Send the file to the process-document endpoint
+    const fetch = require('node-fetch');
+    const response = await fetch(`${FASTAPI_URL}/api/process-document`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to process message as document: ${response.status}`);
+    }
+
+    console.log('Message processed as document successfully');
+
+    // Clean up the temporary file
+    fs.unlinkSync(tempFilePath);
+
+    return true;
+  } catch (error) {
+    console.error('Error processing message as document:', error);
+    return false;
+  }
+};
+
 /**
  * Webhook endpoint for receiving messages from external services
  *
@@ -78,6 +131,11 @@ export async function POST(request: NextRequest) {
       messages.push(newMessage);
 
       if (writeMessages(messages)) {
+        // Process the AI response as a document for the backend (don't await)
+        processMessageForBackend(newMessage).catch(err => {
+          console.error('Failed to process AI response as document from webhook:', err);
+        });
+
         return NextResponse.json({
           success: true,
           message: 'AI response saved successfully',
@@ -119,6 +177,11 @@ export async function POST(request: NextRequest) {
 
         // Write back to the file
         if (writeMessages(messages)) {
+          // Process the message as a document for the backend (don't await)
+          processMessageForBackend(newMessage).catch(err => {
+            console.error('Failed to process message as document from webhook:', err);
+          });
+
           return NextResponse.json({
             success: true,
             message: 'Message created successfully',

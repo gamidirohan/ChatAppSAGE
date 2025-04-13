@@ -4,20 +4,45 @@ import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { User, LogOut, Sun, Moon } from 'lucide-react'
+import { User, LogOut, Sun, Moon, Activity } from 'lucide-react'
+import { checkApiHealth } from '@/lib/api'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function Navbar({ className = "" }: { className?: string }) {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const router = useRouter()
+  const [backendStatus, setBackendStatus] = useState<'loading' | 'online' | 'offline'>('loading')
+
+  // Check backend health status
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const health = await checkApiHealth()
+        setBackendStatus(health.status === 'ok' ? 'online' : 'offline')
+      } catch (error) {
+        console.error('Health check failed:', error)
+        setBackendStatus('offline')
+      }
+    }
+
+    // Check immediately
+    checkHealth()
+
+    // Then check every 30 seconds
+    const interval = setInterval(checkHealth, 30000)
+
+    return () => clearInterval(interval)
+  }, [])
 
   const handleLogout = () => {
     logout()
@@ -32,10 +57,33 @@ export default function Navbar({ className = "" }: { className?: string }) {
         </Link>
 
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={toggleTheme} 
+          {/* Backend status indicator */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center">
+                  <div className={`w-2.5 h-2.5 rounded-full mr-1 ${{
+                    'loading': 'bg-yellow-500 animate-pulse',
+                    'online': 'bg-green-500',
+                    'offline': 'bg-red-500'
+                  }[backendStatus]}`}></div>
+                  <Activity className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Backend: {{
+                  'loading': 'Checking connection...',
+                  'online': 'Connected',
+                  'offline': 'Disconnected'
+                }[backendStatus]}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
             className="rounded-full"
           >
             {theme === 'dark' ? (

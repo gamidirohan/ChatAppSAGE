@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import { sendMessage } from '@/lib/websocket'
 import { Message, FileAttachment } from '@/types'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { processMessageAsDocument } from '@/lib/messageProcessor'
 
 type Props = {
   currentUserId: string
@@ -184,45 +185,160 @@ export default function ChatWindow({
         }
       }
 
-      const message = {
-        id: Date.now().toString(),
-        senderId: currentUserId,
-        receiverId: otherUserId,
-        content: newMessage.trim() || (attachment ? `Sent a file: ${attachment.name}` : ''),
-        timestamp: new Date().toISOString(),
-        read: false,
-        attachment
-      };
+      // Check if this is a message to SAGE (AI assistant)
+      const isSageChat = otherUserId === 'sage';
 
-      // Update local state first for immediate UI update
-      setAllMessages((prev) => [...prev, message]);
+      if (isSageChat) {
+        // Handle SAGE chat differently - use the AI backend
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          senderId: currentUserId,
+          receiverId: otherUserId,
+          content: newMessage.trim() || (attachment ? `Sent a file: ${attachment.name}` : ''),
+          timestamp: new Date().toISOString(),
+          read: true,
+          attachment,
+          role: 'user'
+        };
 
-      // Try to send message via WebSocket first
-      const sentViaWebSocket = sendMessage('NEW_MESSAGE', message);
+        // Update local state with user message
+        setAllMessages((prev) => [...prev, userMessage]);
 
-      // If WebSocket is not available, send via REST API
-      if (!sentViaWebSocket) {
+        // Process the user message as a document for the knowledge graph
+        processMessageAsDocument(userMessage).catch(err => {
+          console.error('Failed to process user message as document:', err);
+        });
+
+        // Clear input and selected file
+        setNewMessage('');
+        clearSelectedFile();
+
         try {
-          console.log('WebSocket unavailable, sending message via API');
-          const response = await fetch('/api/messages', {
+          // Get previous messages for context
+          const relevantMessages = allMessages.filter(
+            (m) => (m.senderId === currentUserId && m.receiverId === 'sage') ||
+                   (m.senderId === 'sage' && m.receiverId === currentUserId)
+          ).slice(-10); // Only use last 10 messages for context
+
+          // Call the AI backend
+          const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(message),
+            body: JSON.stringify({
+              message: userMessage.content,
+              history: relevantMessages.map(m => ({
+                role: m.senderId === currentUserId ? 'user' : 'assistant',
+                content: m.content
+              }))
+            }),
           });
 
           if (!response.ok) {
-            console.error('Failed to send message via API:', await response.text());
+            throw new Error(`Error from API: ${response.status}`);
           }
-        } catch (error) {
-          console.error('Error sending message via API:', error);
-        }
-      }
 
-      // Clear input and selected file
-      setNewMessage('');
-      clearSelectedFile();
+          const data = await response.json();
+
+          // Create AI response message
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            senderId: 'sage',
+            receiverId: currentUserId,
+            content: data.answer,
+            timestamp: new Date().toISOString(),
+            read: false,
+            thinking: data.thinking || [],
+            isAiResponse: true,
+            role: 'assistant'
+          };
+
+          // Update local state with AI response
+          setAllMessages((prev) => [...prev, aiMessage]);
+
+          // Also save the message via WebSocket or API for persistence
+          const sentViaWebSocket = sendMessage('NEW_MESSAGE', aiMessage);
+
+          if (!sentViaWebSocket) {
+            await fetch('/api/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(aiMessage),
+            });
+          }
+
+          // Process the AI response as a document for the knowledge graph
+          processMessageAsDocument(aiMessage).catch(err => {
+            console.error('Failed to process AI response as document:', err);
+          });
+        } catch (error) {
+          console.error('Error getting AI response:', error);
+
+          // Add error message
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            senderId: 'sage',
+            receiverId: currentUserId,
+            content: 'Sorry, I encountered an error processing your request. Please try again later.',
+            timestamp: new Date().toISOString(),
+            read: false,
+            isAiResponse: true,
+            role: 'assistant'
+          };
+
+          setAllMessages((prev) => [...prev, errorMessage]);
+        }
+      } else {
+        // Regular user-to-user chat
+        const message = {
+          id: Date.now().toString(),
+          senderId: currentUserId,
+          receiverId: otherUserId,
+          content: newMessage.trim() || (attachment ? `Sent a file: ${attachment.name}` : ''),
+          timestamp: new Date().toISOString(),
+          read: false,
+          attachment
+        };
+
+        // Update local state first for immediate UI update
+        setAllMessages((prev) => [...prev, message]);
+
+        // Try to send message via WebSocket first
+        const sentViaWebSocket = sendMessage('NEW_MESSAGE', message);
+
+        // If WebSocket is not available, send via REST API
+        if (!sentViaWebSocket) {
+          try {
+            console.log('WebSocket unavailable, sending message via API');
+            const response = await fetch('/api/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(message),
+            });
+
+            if (!response.ok) {
+              console.error('Failed to send message via API:', await response.text());
+            }
+          } catch (error) {
+            console.error('Error sending message via API:', error);
+          }
+        }
+
+        // Process the message as a document for the knowledge graph
+        // This happens in the background and doesn't block the UI
+        processMessageAsDocument(message).catch(err => {
+          console.error('Failed to process message as document:', err);
+        });
+
+        // Clear input and selected file
+        setNewMessage('');
+        clearSelectedFile();
+      }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -283,6 +399,18 @@ export default function ChatWindow({
                       </div>
                     )}
                   </div>
+
+                  {/* Display thinking process for AI messages */}
+                  {m.thinking && m.thinking.length > 0 && m.senderId === 'sage' && (
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      <details>
+                        <summary className="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">Show thinking process</summary>
+                        <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded border text-xs font-mono whitespace-pre-wrap">
+                          {m.thinking.join('\n')}
+                        </div>
+                      </details>
+                    </div>
+                  )}
                   <div
                     className={`text-xs mt-1 ${
                       m.senderId === currentUserId ? 'text-right' : 'text-left'

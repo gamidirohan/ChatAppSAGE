@@ -5,10 +5,10 @@ import { Message } from '@/types';
 const API_CONFIG = {
   // Set this to true to use direct FastAPI backend calls
   // Set to false to use Next.js API routes as proxies
-  USE_DIRECT_FASTAPI: false,
+  USE_DIRECT_FASTAPI: process.env.USE_DIRECT_FASTAPI === 'true',
 
   // FastAPI backend base URL
-  FASTAPI_BASE_URL: 'http://localhost:8000',
+  FASTAPI_BASE_URL: process.env.FASTAPI_URL || 'http://localhost:8000',
 
   // Endpoints
   ENDPOINTS: {
@@ -31,27 +31,46 @@ function getApiUrl(endpoint: string): string {
 
 /**
  * Send a message to the AI and get a response
+ *
+ * @param message The user's message
+ * @param history Optional chat history
+ * @returns Object with answer and thinking steps
  */
 export async function sendChatMessage(message: string, history: Message[] = []) {
   try {
     const url = getApiUrl(API_CONFIG.ENDPOINTS.CHAT);
+
+    // Convert our Message[] format to the format expected by the backend
+    const formattedHistory = history.map(msg => ({
+      role: msg.role || (msg.senderId === 'user' ? 'user' : 'assistant'),
+      content: msg.content
+    }));
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({
+        message,
+        history: formattedHistory
+      }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
       throw new Error(
-        errorData?.error || `HTTP error! status: ${response.status}`
+        errorData?.error || errorData?.detail || `HTTP error! status: ${response.status}`
       );
     }
 
-    return await response.json();
+    const data = await response.json();
+
+    // Return in a format our frontend expects
+    return {
+      answer: data.answer,
+      thinking: data.thinking || []
+    };
   } catch (error) {
     console.error('Error sending chat message:', error);
     throw error;

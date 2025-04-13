@@ -599,5 +599,45 @@
       "size": 185696,
       "url": "/uploads/695f4156-a9ce-4697-be0c-b6abfcd7d249.pdf"
     }
+  },
+  {
+    "id": "1744549698948",
+    "senderId": "1",
+    "receiverId": "8",
+    "content": "Hey Hannah, I wanted to wish you a Congrats as you've been promoted to the new Deputy Manger.",
+    "timestamp": "2025-04-13T13:08:18.948Z",
+    "read": false
+  },
+  {
+    "id": "1744549890086",
+    "senderId": "sage",
+    "receiverId": "1",
+    "content": "The list of people who got promoted recently includes:\n\n- Hannah (promoted to Deputy Manager)",
+    "timestamp": "2025-04-13T13:11:30.085Z",
+    "read": true
+  },
+  {
+    "id": "1744552575578",
+    "senderId": "sage",
+    "receiverId": "1",
+    "content": "The context provided does not include the name of the deputy manager. It only shows that a request was made to identify the deputy manager and that a list of recently promoted individuals was requested and sent, but no specific names or details about the promotions are included. Therefore, the deputy manager cannot be identified from the given information.\n\nAnswer: The context does not provide the name of the deputy manager.",
+    "timestamp": "2025-04-13T13:56:15.577Z",
+    "read": true
+  },
+  {
+    "id": "1744552627049",
+    "senderId": "sage",
+    "receiverId": "1",
+    "content": "The number of people who got promoted recently is **1**.",
+    "timestamp": "2025-04-13T13:57:07.048Z",
+    "read": true
+  },
+  {
+    "id": "1744552692901",
+    "senderId": "sage",
+    "receiverId": "1",
+    "content": "The list of people who got promoted recently includes:\n- Hannah (promoted to Deputy Manager)",
+    "timestamp": "2025-04-13T13:58:12.922Z",
+    "read": true
   }
 ]
