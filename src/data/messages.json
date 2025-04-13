@@ -1,17 +1,603 @@
 [
-    {
-      "id": "msg1",
-      "senderId": "u1",
-      "receiverId": "u2",
-      "content": "Hello Bob!",
-      "timestamp": 1699990000000
-    },
-    {
-      "id": "msg2",
-      "senderId": "u2",
-      "receiverId": "u1",
-      "content": "Hey Alice!",
-      "timestamp": 1699990001000
+  {
+    "id": "1",
+    "senderId": "currentUser",
+    "receiverId": "1",
+    "content": "Hey Alice!",
+    "timestamp": "2023-04-10T10:30:00Z"
+  },
+  {
+    "id": "2",
+    "senderId": "1",
+    "receiverId": "currentUser",
+    "content": "Hi there! How are you?",
+    "timestamp": "2023-04-10T10:31:00Z"
+  },
+  {
+    "id": "3",
+    "senderId": "currentUser",
+    "receiverId": "1",
+    "content": "I'm good, thanks! Just working on this new project.",
+    "timestamp": "2023-04-10T10:32:00Z"
+  },
+  {
+    "id": "4",
+    "senderId": "1",
+    "receiverId": "currentUser",
+    "content": "That sounds interesting! What's it about?",
+    "timestamp": "2023-04-10T10:33:00Z"
+  },
+  {
+    "id": "5",
+    "senderId": "currentUser",
+    "receiverId": "2",
+    "content": "Hey Bob, do you have a minute to talk about the presentation?",
+    "timestamp": "2023-04-09T15:20:00Z"
+  },
+  {
+    "id": "6",
+    "senderId": "2",
+    "receiverId": "currentUser",
+    "content": "Sure! I'm free now if you want to discuss it.",
+    "timestamp": "2023-04-09T15:25:00Z"
+  },
+  {
+    "id": "7",
+    "senderId": "currentUser",
+    "receiverId": "3",
+    "content": "Hi Charlie, just wanted to check if we're still meeting tomorrow?",
+    "timestamp": "2023-04-08T09:10:00Z"
+  },
+  {
+    "id": "8",
+    "senderId": "3",
+    "receiverId": "currentUser",
+    "content": "Yes, 2pm at the coffee shop still works for me!",
+    "timestamp": "2023-04-08T09:15:00Z"
+  },
+  {
+    "id": "9",
+    "senderId": "currentUser",
+    "receiverId": "4",
+    "content": "Diana, could you share those files you mentioned yesterday?",
+    "timestamp": "2023-04-07T14:40:00Z"
+  },
+  {
+    "id": "10",
+    "senderId": "4",
+    "receiverId": "currentUser",
+    "content": "Just sent them to your email. Let me know if you need anything else!",
+    "timestamp": "2023-04-07T14:45:00Z"
+  },
+  {
+    "id": "11",
+    "senderId": "1",
+    "receiverId": "2",
+    "content": "Hey Bob, did you finish the report for tomorrow's meeting?",
+    "timestamp": "2023-04-10T14:20:00Z"
+  },
+  {
+    "id": "12",
+    "senderId": "2",
+    "receiverId": "1",
+    "content": "Almost done, Alice. I'll send it to you in an hour.",
+    "timestamp": "2023-04-10T14:22:00Z"
+  },
+  {
+    "id": "13",
+    "senderId": "1",
+    "receiverId": "2",
+    "content": "Perfect, thanks! I'll review it this evening.",
+    "timestamp": "2023-04-10T14:25:00Z"
+  },
+  {
+    "id": "14",
+    "senderId": "2",
+    "receiverId": "3",
+    "content": "Charlie, are you joining us for lunch today?",
+    "timestamp": "2023-04-10T11:30:00Z"
+  },
+  {
+    "id": "15",
+    "senderId": "3",
+    "receiverId": "2",
+    "content": "Yes, I'll be there around 12:30. Where are we going?",
+    "timestamp": "2023-04-10T11:32:00Z"
+  },
+  {
+    "id": "16",
+    "senderId": "2",
+    "receiverId": "3",
+    "content": "We're thinking about that new Italian place downtown.",
+    "timestamp": "2023-04-10T11:33:00Z"
+  },
+  {
+    "id": "17",
+    "senderId": "3",
+    "receiverId": "2",
+    "content": "Sounds great! I've been wanting to try it.",
+    "timestamp": "2023-04-10T11:35:00Z"
+  },
+  {
+    "id": "18",
+    "senderId": "3",
+    "receiverId": "4",
+    "content": "Diana, do you have the slides for next week's presentation?",
+    "timestamp": "2023-04-09T16:40:00Z"
+  },
+  {
+    "id": "19",
+    "senderId": "4",
+    "receiverId": "3",
+    "content": "Yes, I can share them with you. Do you want me to email them?",
+    "timestamp": "2023-04-09T16:45:00Z"
+  },
+  {
+    "id": "20",
+    "senderId": "3",
+    "receiverId": "4",
+    "content": "That would be great. I want to add my section this weekend.",
+    "timestamp": "2023-04-09T16:47:00Z"
+  },
+  {
+    "id": "21",
+    "senderId": "4",
+    "receiverId": "1",
+    "content": "Alice, I have a question about the project timeline.",
+    "timestamp": "2023-04-08T10:15:00Z"
+  },
+  {
+    "id": "22",
+    "senderId": "1",
+    "receiverId": "4",
+    "content": "Sure Diana, what do you need to know?",
+    "timestamp": "2023-04-08T10:18:00Z"
+  },
+  {
+    "id": "23",
+    "senderId": "4",
+    "receiverId": "1",
+    "content": "I'm wondering if we can push the design phase by a week?",
+    "timestamp": "2023-04-08T10:20:00Z"
+  },
+  {
+    "id": "24",
+    "senderId": "1",
+    "receiverId": "4",
+    "content": "I think that should be fine, but let me confirm with the team.",
+    "timestamp": "2023-04-08T10:22:00Z"
+  },
+  {
+    "id": "25",
+    "senderId": "1",
+    "receiverId": "group1",
+    "content": "Everyone, reminder about tomorrow's team meeting at 9am.",
+    "timestamp": "2023-04-11T15:00:00Z"
+  },
+  {
+    "id": "26",
+    "senderId": "2",
+    "receiverId": "group1",
+    "content": "I'll be there. Do we need to prepare anything?",
+    "timestamp": "2023-04-11T15:05:00Z"
+  },
+  {
+    "id": "27",
+    "senderId": "4",
+    "receiverId": "group1",
+    "content": "Just bring your project updates for the weekly review.",
+    "timestamp": "2023-04-11T15:08:00Z"
+  },
+  {
+    "id": "28",
+    "senderId": "3",
+    "receiverId": "1",
+    "content": "Alice, can we move our 1:1 to Thursday instead?",
+    "timestamp": "2023-04-11T09:30:00Z"
+  },
+  {
+    "id": "29",
+    "senderId": "1",
+    "receiverId": "3",
+    "content": "Thursday works for me, Charlie. Same time?",
+    "timestamp": "2023-04-11T09:35:00Z"
+  },
+  {
+    "id": "30",
+    "senderId": "3",
+    "receiverId": "1",
+    "content": "Yes, 3pm. Thanks!",
+    "timestamp": "2023-04-11T09:36:00Z"
+  },
+  {
+    "id": "sage1",
+    "senderId": "currentUser",
+    "receiverId": "sage",
+    "content": "Can you help me understand how GraphRAG works?",
+    "timestamp": "2023-04-11T18:30:00Z",
+    "read": true
+  },
+  {
+    "id": "sage2",
+    "senderId": "sage",
+    "receiverId": "currentUser",
+    "content": "GraphRAG combines retrieval-augmented generation with knowledge graphs. Information is stored in a graph structure where entities and their relationships are explicitly modeled. When you ask a question, the system searches this graph for relevant information, extracts it, and generates accurate answers.",
+    "timestamp": "2023-04-11T18:31:05Z",
+    "read": true
+  },
+  {
+    "id": "sage3",
+    "senderId": "currentUser",
+    "receiverId": "sage",
+    "content": "That's interesting. How does Neo4j fit into this?",
+    "timestamp": "2023-04-11T18:32:30Z",
+    "read": true
+  },
+  {
+    "id": "sage4",
+    "senderId": "sage",
+    "receiverId": "currentUser",
+    "content": "Neo4j is a graph database that's perfect for storing the knowledge graph component of GraphRAG. It allows us to model complex relationships between entities and efficiently query those relationships. In our system, Neo4j stores the Enterprise Knowledge Graph (EKG) which contains domain-specific knowledge, while n8n helps with integrating various data sources and automating workflows to keep the knowledge graph updated.",
+    "timestamp": "2023-04-11T18:33:15Z",
+    "read": true
+  },
+  {
+    "id": "m001",
+    "senderId": "1",
+    "receiverId": "2",
+    "content": "Hey Bob, have you completed the API integration for Project Alpha?",
+    "timestamp": "2023-04-10T09:15:00Z",
+    "read": true
+  },
+  {
+    "id": "m002",
+    "senderId": "2",
+    "receiverId": "1",
+    "content": "Almost done, Alice. I'm testing the authentication flow now.",
+    "timestamp": "2023-04-10T09:17:30Z",
+    "read": true
+  },
+  {
+    "id": "m003",
+    "senderId": "2",
+    "receiverId": "5",
+    "content": "Elijah, could you review the UI designs for the new dashboard?",
+    "timestamp": "2023-04-10T10:30:00Z",
+    "read": true
+  },
+  {
+    "id": "m004",
+    "senderId": "5",
+    "receiverId": "2",
+    "content": "I'll have them ready by end of day. Do you need anything specific?",
+    "timestamp": "2023-04-10T10:35:21Z",
+    "read": true
+  },
+  {
+    "id": "m005",
+    "senderId": "1",
+    "receiverId": "5",
+    "content": "Hi Elijah, the color scheme needs to match our brand guidelines.",
+    "timestamp": "2023-04-10T11:12:00Z",
+    "read": true
+  },
+  {
+    "id": "m006",
+    "senderId": "5",
+    "receiverId": "1",
+    "content": "Got it. I'll make sure everything is consistent with the brand.",
+    "timestamp": "2023-04-10T11:15:42Z",
+    "read": true
+  },
+  {
+    "id": "m007",
+    "senderId": "3",
+    "receiverId": "4",
+    "content": "Diana, can you help debug the performance issue in the beta release?",
+    "timestamp": "2023-04-10T13:05:12Z",
+    "read": true
+  },
+  {
+    "id": "m008",
+    "senderId": "4",
+    "receiverId": "3",
+    "content": "Sure. I noticed the database queries are taking too long. I'll optimize them.",
+    "timestamp": "2023-04-10T13:10:30Z",
+    "read": true
+  },
+  {
+    "id": "m009",
+    "senderId": "8",
+    "receiverId": "3",
+    "content": "Charlie, the client wants to review Project Beta progress tomorrow. Can we meet at 3pm to prepare?",
+    "timestamp": "2023-04-10T14:22:18Z",
+    "read": true
+  },
+  {
+    "id": "m010",
+    "senderId": "3",
+    "receiverId": "8",
+    "content": "That works for me. I'll bring the latest design prototypes.",
+    "timestamp": "2023-04-10T14:25:00Z",
+    "read": true
+  },
+  {
+    "id": "m011",
+    "senderId": "4",
+    "receiverId": "8",
+    "content": "Hannah, I've fixed the critical bugs for Project Beta. The test environment is updated.",
+    "timestamp": "2023-04-10T15:18:22Z",
+    "read": true
+  },
+  {
+    "id": "m012",
+    "senderId": "8",
+    "receiverId": "4",
+    "content": "Great job! I'll include this in the client presentation tomorrow.",
+    "timestamp": "2023-04-10T15:20:45Z",
+    "read": true
+  },
+  {
+    "id": "m013",
+    "senderId": "6",
+    "receiverId": "7",
+    "content": "George, we need to accelerate Project Gamma timeline. Can we meet today?",
+    "timestamp": "2023-04-10T10:05:00Z",
+    "read": true
+  },
+  {
+    "id": "m014",
+    "senderId": "7",
+    "receiverId": "6",
+    "content": "Sure, how about 2pm? I'll need to review resource allocation.",
+    "timestamp": "2023-04-10T10:07:30Z",
+    "read": true
+  },
+  {
+    "id": "m015",
+    "senderId": "1",
+    "receiverId": "3",
+    "content": "Charlie, can we borrow your design resources for a week? We're short-staffed.",
+    "timestamp": "2023-04-10T16:10:00Z",
+    "read": true
+  },
+  {
+    "id": "m016",
+    "senderId": "3",
+    "receiverId": "1",
+    "content": "Let me check our schedule. We're approaching a deadline but might be able to help.",
+    "timestamp": "2023-04-10T16:15:22Z",
+    "read": true
+  },
+  {
+    "id": "m017",
+    "senderId": "6",
+    "receiverId": "8",
+    "content": "Hannah, the management team wants to combine certain aspects of Projects Beta and Gamma. Can we discuss?",
+    "timestamp": "2023-04-10T17:00:00Z",
+    "read": true
+  },
+  {
+    "id": "m018",
+    "senderId": "8",
+    "receiverId": "6",
+    "content": "Interesting. Let's schedule a call tomorrow to explore the possibilities.",
+    "timestamp": "2023-04-10T17:05:45Z",
+    "read": true
+  },
+  {
+    "id": "m019",
+    "senderId": "currentUser",
+    "receiverId": "1",
+    "content": "Alice, I've reviewed the Project Alpha marketing materials. They look good!",
+    "timestamp": "2023-04-11T09:30:00Z",
+    "read": true
+  },
+  {
+    "id": "m020",
+    "senderId": "1",
+    "receiverId": "currentUser",
+    "content": "Thanks! We're going to present them at the meeting tomorrow.",
+    "timestamp": "2023-04-11T09:32:15Z",
+    "read": true
+  },
+  {
+    "id": "m021",
+    "senderId": "currentUser",
+    "receiverId": "2",
+    "content": "Bob, how's the API documentation coming along?",
+    "timestamp": "2023-04-11T10:15:00Z",
+    "read": true
+  },
+  {
+    "id": "m022",
+    "senderId": "2",
+    "receiverId": "currentUser",
+    "content": "Just finished it. I'll send you the link to review.",
+    "timestamp": "2023-04-11T10:17:30Z",
+    "read": true
+  },
+  {
+    "id": "m023",
+    "senderId": "currentUser",
+    "receiverId": "6",
+    "content": "Fiona, the board wants an update on Project Gamma next week. Do we have the latest metrics?",
+    "timestamp": "2023-04-11T11:20:00Z",
+    "read": true
+  },
+  {
+    "id": "m024",
+    "senderId": "6",
+    "receiverId": "currentUser",
+    "content": "Yes, I'm preparing the report now. We've exceeded our Q2 targets already.",
+    "timestamp": "2023-04-11T11:23:45Z",
+    "read": true
+  },
+  {
+    "id": "m025",
+    "senderId": "7",
+    "receiverId": "currentUser",
+    "content": "I've resolved the infrastructure issues we discussed yesterday. The system is stable now.",
+    "timestamp": "2023-04-11T13:40:00Z",
+    "read": true
+  },
+  {
+    "id": "m026",
+    "senderId": "currentUser",
+    "receiverId": "7",
+    "content": "Great work, George! That was faster than expected.",
+    "timestamp": "2023-04-11T13:42:30Z",
+    "read": true
+  },
+  {
+    "id": "m027",
+    "senderId": "2",
+    "receiverId": "4",
+    "content": "Diana, can we collaborate on the shared authentication system? Both our projects could benefit.",
+    "timestamp": "2023-04-11T14:15:00Z",
+    "read": true
+  },
+  {
+    "id": "m028",
+    "senderId": "4",
+    "receiverId": "2",
+    "content": "That's a good idea. Let's set up a technical discussion with both teams.",
+    "timestamp": "2023-04-11T14:18:22Z",
+    "read": true
+  },
+  {
+    "id": "m029",
+    "senderId": "5",
+    "receiverId": "3",
+    "content": "Charlie, I love the design system you created. Can we adopt it for Project Alpha as well?",
+    "timestamp": "2023-04-11T15:30:00Z",
+    "read": true
+  },
+  {
+    "id": "m030",
+    "senderId": "3",
+    "receiverId": "5",
+    "content": "Absolutely! I'll share the component library with you. It's highly customizable.",
+    "timestamp": "2023-04-11T15:33:15Z",
+    "read": true
+  },
+  {
+    "id": "m031",
+    "senderId": "8",
+    "receiverId": "1",
+    "content": "The quarterly review is coming up. Do you have the latest figures for Project Alpha?",
+    "timestamp": "2023-04-11T16:50:00Z",
+    "read": true
+  },
+  {
+    "id": "m032",
+    "senderId": "1",
+    "receiverId": "8",
+    "content": "I'll send them over by end of day. Our growth metrics are particularly impressive this quarter.",
+    "timestamp": "2023-04-11T16:52:30Z",
+    "read": false
+  },
+  {
+    "id": "m033",
+    "senderId": "7",
+    "receiverId": "4",
+    "content": "Diana, we're planning to upgrade the server infrastructure next week. Will this affect Project Beta?",
+    "timestamp": "2023-04-11T17:10:15Z",
+    "read": false
+  },
+  {
+    "id": "m034",
+    "senderId": "4",
+    "receiverId": "7",
+    "content": "We should be fine as long as the downtime is during our non-peak hours. Can you schedule it after 8pm?",
+    "timestamp": "2023-04-11T17:12:45Z",
+    "read": false
+  },
+  {
+    "id": "m035",
+    "senderId": "currentUser",
+    "receiverId": "5",
+    "content": "Elijah, the new dashboard design looks great! Can we add a dark mode option too?",
+    "timestamp": "2023-04-11T17:30:00Z",
+    "read": false
+  },
+  {
+    "id": "m036",
+    "senderId": "5",
+    "receiverId": "currentUser",
+    "content": "Thanks! Yes, dark mode is actually already in development. I'll have a preview ready by tomorrow.",
+    "timestamp": "2023-04-11T17:32:22Z",
+    "read": false
+  },
+  {
+    "id": "1744545554443",
+    "senderId": "1",
+    "receiverId": "4",
+    "content": "Hello Diana",
+    "timestamp": "2025-04-13T11:59:14.443Z",
+    "read": false
+  },
+  {
+    "id": "1744545557575",
+    "senderId": "1",
+    "receiverId": "4",
+    "content": "Watcha doin?",
+    "timestamp": "2025-04-13T11:59:17.575Z",
+    "read": false
+  },
+  {
+    "id": "1744545564591",
+    "senderId": "1",
+    "receiverId": "4",
+    "content": "How far have you finished the project?",
+    "timestamp": "2025-04-13T11:59:24.591Z",
+    "read": false
+  },
+  {
+    "id": "1744545650578",
+    "senderId": "1",
+    "receiverId": "2",
+    "content": "Hey Bob!!",
+    "timestamp": "2025-04-13T12:00:50.578Z",
+    "read": false
+  },
+  {
+    "id": "1744547032872",
+    "senderId": "1",
+    "receiverId": "3",
+    "content": "Hello",
+    "timestamp": "2025-04-13T12:23:52.872Z",
+    "read": false
+  },
+  {
+    "id": "1744547102289",
+    "senderId": "1",
+    "receiverId": "3",
+    "content": "Hey",
+    "timestamp": "2025-04-13T12:25:02.289Z",
+    "read": false
+  },
+  {
+    "id": "1744547111711",
+    "senderId": "1",
+    "receiverId": "3",
+    "content": "Check this pdf out dude",
+    "timestamp": "2025-04-13T12:25:11.711Z",
+    "read": false
+  },
+  {
+    "id": "1744547381103",
+    "senderId": "1",
+    "receiverId": "3",
+    "content": "Hey , did you check the pdf I sent ya?",
+    "timestamp": "2025-04-13T12:29:41.103Z",
+    "read": false,
+    "attachment": {
+      "id": "695f4156-a9ce-4697-be0c-b6abfcd7d249",
+      "name": "GSoC_ Telegram AI Assistant_.pdf",
+      "type": "application/pdf",
+      "size": 185696,
+      "url": "/uploads/695f4156-a9ce-4697-be0c-b6abfcd7d249.pdf"
     }
-  ]
-  
+  }
+]
