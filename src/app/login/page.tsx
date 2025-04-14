@@ -63,24 +63,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex justify-center items-center py-12 bg-gray-50 p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex justify-center items-center py-12 bg-gray-50 dark:bg-gray-900 p-4 min-h-[calc(100vh-64px)]">
+
+      <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
         <Tabs defaultValue="login">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="register">Register</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 dark:bg-gray-700">
+            <TabsTrigger value="login" className="dark:data-[state=active]:bg-gray-800 dark:data-[state=active]:text-white dark:text-gray-300">Login</TabsTrigger>
+            <TabsTrigger value="register" className="dark:data-[state=active]:bg-gray-800 dark:data-[state=active]:text-white dark:text-gray-300">Register</TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
             <form onSubmit={handleLoginSubmit}>
               <CardHeader>
-                <CardTitle>Login</CardTitle>
-                <CardDescription>Enter your credentials to access your account</CardDescription>
+                <CardTitle className="dark:text-white">Login</CardTitle>
+                <CardDescription className="dark:text-gray-300">Enter your credentials to access your account</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium">Email</label>
+                  <label htmlFor="email" className="text-sm font-medium dark:text-gray-200">Email</label>
                   <Input
                     id="email"
                     type="email"
@@ -91,7 +92,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm font-medium">Password</label>
+                  <label htmlFor="password" className="text-sm font-medium dark:text-gray-200">Password</label>
                   <Input
                     id="password"
                     type="password"
@@ -112,13 +113,13 @@ export default function LoginPage() {
           <TabsContent value="register">
             <form onSubmit={handleRegisterSubmit}>
               <CardHeader>
-                <CardTitle>Register</CardTitle>
-                <CardDescription>Create a new account</CardDescription>
+                <CardTitle className="dark:text-white">Register</CardTitle>
+                <CardDescription className="dark:text-gray-300">Create a new account</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 <div className="space-y-2">
-                  <label htmlFor="name" className="text-sm font-medium">Name</label>
+                  <label htmlFor="name" className="text-sm font-medium dark:text-gray-200">Name</label>
                   <Input
                     id="name"
                     placeholder="John Doe"
@@ -128,7 +129,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="register-email" className="text-sm font-medium">Email</label>
+                  <label htmlFor="register-email" className="text-sm font-medium dark:text-gray-200">Email</label>
                   <Input
                     id="register-email"
                     type="email"
@@ -139,7 +140,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="register-password" className="text-sm font-medium">Password</label>
+                  <label htmlFor="register-password" className="text-sm font-medium dark:text-gray-200">Password</label>
                   <Input
                     id="register-password"
                     type="password"
@@ -149,7 +150,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="confirm-password" className="text-sm font-medium">Confirm Password</label>
+                  <label htmlFor="confirm-password" className="text-sm font-medium dark:text-gray-200">Confirm Password</label>
                   <Input
                     id="confirm-password"
                     type="password"
