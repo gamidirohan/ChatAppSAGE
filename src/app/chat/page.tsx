@@ -294,7 +294,7 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex chat-page-container">
       {/* Mobile: Sidebar in a Sheet */}
       {isMobile ? (
         <div className="fixed top-0 left-0 z-10 p-4">

@@ -67,6 +67,11 @@ export default function ChatWindow({
 
       setRelevantMessages(filteredMessages);
 
+      // Scroll to bottom when messages change
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+
       // Mark messages as read when viewing the conversation
       const markMessagesAsRead = async () => {
         try {
@@ -282,6 +287,11 @@ export default function ChatWindow({
           processMessageAsDocument(aiMessage).catch(err => {
             console.error('Failed to process AI response as document:', err);
           });
+
+          // Scroll to bottom after receiving AI response
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
         } catch (error) {
           console.error('Error getting AI response:', error);
 
@@ -346,6 +356,11 @@ export default function ChatWindow({
         // Clear input and selected file
         setNewMessage('');
         clearSelectedFile();
+
+        // Scroll to bottom after sending a message
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       }
     };
 
@@ -362,14 +377,14 @@ export default function ChatWindow({
     };
 
     return (
-      <div className="flex flex-col h-full max-h-[calc(100vh-50px)]">
+      <div className="flex flex-col h-full">
         {/* Chat header */}
         <div className="px-4 py-2 border-b flex-shrink-0 bg-white dark:border-gray-700 dark:bg-gray-800">
           <div className="font-medium dark:text-white">Chat with {displayName}</div>
         </div>
 
         {/* Message area */}
-        <div className="flex-grow overflow-y-auto p-4 pt-6 scroll-area bg-gray-50 dark:bg-gray-900">
+        <div className="chat-message-area p-4 pt-6 bg-gray-50 dark:bg-gray-900">
           <div className="space-y-4">
             {relevantMessages.map((m) => (
               <div
@@ -434,7 +449,7 @@ export default function ChatWindow({
         </div>
 
         {/* Input area */}
-        <div className="border-t p-2 pt-4 flex flex-col gap-2 flex-shrink-0 bg-white dark:bg-gray-800 dark:border-gray-700 mt-2">
+        <div className="border-t p-2 pt-4 flex flex-col gap-2 flex-shrink-0 bg-white dark:bg-gray-800 dark:border-gray-700 sticky bottom-0">
           {/* File upload preview */}
           {selectedFile && (
             <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-gray-700 rounded-md">

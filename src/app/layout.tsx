@@ -26,7 +26,7 @@ export default function RootLayout({
         <AuthProvider>
           <ThemeProvider>
             <Navbar className="flex-shrink-0" />
-            <main className="flex-grow">{children}</main>
+            <main className="flex-grow overflow-auto">{children}</main>
           </ThemeProvider>
         </AuthProvider>
       </body>
