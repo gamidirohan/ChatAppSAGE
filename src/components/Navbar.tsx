@@ -3,6 +3,7 @@
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
@@ -52,8 +53,15 @@ export default function Navbar({ className = "" }: { className?: string }) {
   return (
     <nav className={`border-b py-3 px-4 bg-white dark:bg-gray-900 dark:border-gray-700 z-10 ${className}`}>
       <div className="container mx-auto flex justify-between items-center">
-        <Link href="/" className="font-bold text-xl dark:text-white">
-          Chat App
+        <Link href="/" className="flex items-center">
+          <Image
+            src="/logo.svg"
+            alt="SAGE Logo"
+            width={100}
+            height={50}
+            className="h-10 w-auto"
+            priority
+          />
         </Link>
 
         <div className="flex items-center gap-4">

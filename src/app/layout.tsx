@@ -11,8 +11,8 @@ import '@/app/api/ensure-uploads-dir'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Chat App',
-  description: 'Chat application with GROQ-based Graph RAG',
+  title: 'SAGE',
+  description: 'SAGE - Chat application with GROQ-based Graph RAG',
 }
 
 export default function RootLayout({
