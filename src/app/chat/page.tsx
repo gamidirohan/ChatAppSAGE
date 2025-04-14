@@ -39,10 +39,14 @@ export default function ChatPage() {
         // Add last message info to each user
         const usersWithLastMessage = filteredUsers.map(u => {
           // Find the last message between current user and this user
-            const relevantMessages = messages.filter((m: Message) =>
+          // Note: We need to handle the case where the current user ID might be different in messages
+          const relevantMessages = messages.filter((m: Message) =>
             (m.senderId === user.id && m.receiverId === u.id) ||
-            (m.senderId === u.id && m.receiverId === user.id)
-            );
+            (m.senderId === u.id && m.receiverId === user.id) ||
+            // Handle the case where the current user ID is 'currentUser' in messages
+            (m.senderId === 'currentUser' && m.receiverId === u.id) ||
+            (m.senderId === u.id && m.receiverId === 'currentUser')
+          );
 
           // Sort by timestamp, most recent first
             relevantMessages.sort((a: { timestamp: string }, b: { timestamp: string }) =>
@@ -324,7 +328,21 @@ export default function ChatPage() {
               variant="ghost"
               size="sm"
               className="ml-2 h-6 px-2 text-xs"
-              onClick={() => manualReconnect()}
+              onClick={() => {
+                // Log reconnection attempt
+                console.log('Manual reconnection requested by user');
+
+                // Call manualReconnect and then force a state update
+                const result = manualReconnect();
+                console.log('Manual reconnect result:', result);
+
+                // Force a small delay before updating the UI
+                setTimeout(() => {
+                  // This will trigger a re-render
+                  setIsConnected(false);
+                  console.log('UI state updated, isConnected set to false');
+                }, 200);
+              }}
             >
               Reconnect
             </Button>

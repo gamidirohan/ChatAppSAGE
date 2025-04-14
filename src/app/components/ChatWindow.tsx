@@ -49,8 +49,16 @@ export default function ChatWindow({
       // Filter messages relevant to the current chat (just between these two users)
       const filteredMessages = allMessages.filter(
         (m) => (m.senderId === currentUserId && m.receiverId === otherUserId) ||
-               (m.senderId === otherUserId && m.receiverId === currentUserId)
+               (m.senderId === otherUserId && m.receiverId === currentUserId) ||
+               // Handle the case where the current user ID is 'currentUser' in messages
+               (m.senderId === 'currentUser' && m.receiverId === otherUserId) ||
+               (m.senderId === otherUserId && m.receiverId === 'currentUser')
       );
+
+      // Log the filtered messages for debugging
+      console.log(`Filtered messages for chat with ${otherUserId}:`, filteredMessages.length);
+      console.log('Current user ID:', currentUserId);
+      console.log('Other user ID:', otherUserId);
 
       // Sort by timestamp
       filteredMessages.sort((a, b) =>

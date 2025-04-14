@@ -639,5 +639,77 @@
     "content": "The list of people who got promoted recently includes:\n- Hannah (promoted to Deputy Manager)",
     "timestamp": "2025-04-13T13:58:12.922Z",
     "read": true
+  },
+  {
+    "id": "1744605299509",
+    "senderId": "1",
+    "receiverId": "2",
+    "content": "Hey Bob, can you take over the Billing part of the Phoenix project for the first three Sprints",
+    "timestamp": "2025-04-14T04:34:59.509Z",
+    "read": false
+  },
+  {
+    "id": "1744605368189",
+    "senderId": "1744605343633",
+    "receiverId": "1",
+    "content": "Hey Alice, Can you please share the updated reports to me by the EOD? Thank you.",
+    "timestamp": "2025-04-14T04:36:08.189Z",
+    "read": false
+  },
+  {
+    "id": "1744605440092",
+    "senderId": "sage",
+    "receiverId": "1744605343633",
+    "content": "The context provided does not include any mention of someone saying \"thank you.\" The messages are all business-related requests and questions without any expressions of gratitude. Therefore, it's not possible to determine who is saying \"thank you\" based on the given information.\n\nAnswer: The context does not mention anyone saying \"thank you,\" so it's not possible to determine who said that.",
+    "timestamp": "2025-04-14T04:37:20.091Z",
+    "read": true
+  },
+  {
+    "id": "1744605476275",
+    "senderId": "sage",
+    "receiverId": "1744605343633",
+    "content": "No, based on the provided context, no one said \"thank you.\" The summaries explicitly state that there is no mention of anyone expressing gratitude, and the message is a question about it without confirmation. \n\nAnswer: No, no one said \"thank you\" in the provided context.",
+    "timestamp": "2025-04-14T04:37:56.274Z",
+    "read": true
+  },
+  {
+    "id": "1744605809109",
+    "senderId": "sage",
+    "receiverId": "1744605343633",
+    "content": "To extract everything from your graph based on the provided context, you would need to retrieve all the messages along with their details. Here's how you can structure the extraction:\n\n1. **Identify the Data Structure**: The context consists of three JSON objects, each representing a message with varying levels of detail.\n\n2. **Determine the Query Method**: Depending on the type of database (relational, NoSQL, graph), use the appropriate query language. For example, in a graph database like Neo4j, use Cypher to match all nodes and return their properties.\n\n3. **Extract All Fields**: Ensure you include all relevant fields such as `sender_id`, `receiver_id`, `message`, and `sent_time`.\n\n4. **Format the Output**: Present the data in the desired format, likely JSON as per the context.\n\nHere's an example of how the extracted data might look in JSON format:\n\n```json\n[\n  {\n    \"summary\": \"A JSON-formatted message from sender ID 1 to receiver ID 'sage' asking about recent promotions, sent on April 13, 2025, at 13:56:46.860Z.\"\n  },\n  {\n    \"summary\": \"A JSON-formatted message from sender ID 1 to sage requesting a list of recently promoted individuals, sent on April 13, 2025 at 13:10:21 UTC.\"\n  },\n  {\n    \"summary\": \"A message from sender ID 1 to receiver ID 8 congratulating Hannah on her promotion to Deputy Manager, sent on 2025-04-13T13:08:18.948Z. The message is formatted in JSON.\",\n    \"sender_id\": 1,\n    \"receiver_id\": 8,\n    \"message\": \"Hey Hannah, I wanted to wish you a Congrats as you've been promoted to the new Deputy Manager.\",\n    \"sent_time\": \"2025-04-13T13:08:18.948Z\"\n  }\n]\n```\n\nThis extraction includes all messages and their details from the provided context.",
+    "timestamp": "2025-04-14T04:43:29.108Z",
+    "read": true
+  },
+  {
+    "id": "1744605854406",
+    "senderId": "1744605343633",
+    "receiverId": "6",
+    "content": "Hey Fiona, Why have you taken a leave for Office today?",
+    "timestamp": "2025-04-14T04:44:14.406Z",
+    "read": false
+  },
+  {
+    "id": "1744605862199",
+    "senderId": "1744605343633",
+    "receiverId": "6",
+    "content": "You good girl?",
+    "timestamp": "2025-04-14T04:44:22.199Z",
+    "read": false
+  },
+  {
+    "id": "1744606148740",
+    "senderId": "sage",
+    "receiverId": "1744605343633",
+    "content": "No, the context does not indicate that anyone is sick. While Fiona took a leave, the reason is not specified as sickness.",
+    "timestamp": "2025-04-14T04:49:08.739Z",
+    "read": true
+  },
+  {
+    "id": "1744606174439",
+    "senderId": "sage",
+    "receiverId": "1744605343633",
+    "content": "Fiona took her leave on April 14, 2025.",
+    "timestamp": "2025-04-14T04:49:34.438Z",
+    "read": true
   }
 ]

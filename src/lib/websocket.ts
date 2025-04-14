@@ -27,9 +27,13 @@ export function connectWebSocket() {
   // Connect to the WebSocket server
   // In development, we'll try to connect to the local WebSocket server
   // In production, we'll connect to the same host as the app
-  const wsUrl = process.env.NODE_ENV === 'production'
-    ? `wss://${window.location.host}/ws`
-    : 'ws://localhost:8080';
+  // Allow configuration via environment variable
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL ||
+    (process.env.NODE_ENV === 'production'
+      ? `wss://${window.location.host}/ws`
+      : 'ws://localhost:8080');
+
+  console.log(`Attempting to connect to WebSocket server at ${wsUrl}...`);
 
   try {
     // Create a new WebSocket connection
@@ -66,12 +70,18 @@ export function connectWebSocket() {
     };
 
     // Handle connection errors
-    socket.onerror = () => {
+    socket.onerror = (event) => {
       // The error event doesn't contain useful information in browsers due to security restrictions
       // We'll just log that an error occurred and let the onclose handler deal with reconnection
       console.warn('WebSocket error occurred - connection will be closed automatically');
+      console.log('WebSocket error event:', event);
+
+      // Notify all connection listeners about the error
+      connectionCallbacks.forEach(cb => cb(false));
+
       // We don't need to manually close the socket as the browser will do this automatically
-      // and trigger the onclose event
+      // and trigger the onclose event, but we'll set the socket to null to be safe
+      socket = null;
     };
   } catch (error) {
     // This catch block handles errors in setting up the WebSocket, not connection errors
@@ -123,21 +133,41 @@ export function closeWebSocket() {
  * or when the user wants to manually trigger a reconnection
  */
 export function manualReconnect() {
+  console.log('Manual reconnect function called');
+
   // Close existing socket if any
   if (socket) {
-    socket.close();
+    console.log('Closing existing socket connection');
+    try {
+      socket.close();
+    } catch (error) {
+      console.error('Error closing socket:', error);
+    }
     socket = null;
+  } else {
+    console.log('No existing socket to close');
   }
 
   // Clear any pending reconnect
   clearTimeout(reconnectTimeout);
+  console.log('Cleared reconnect timeout');
 
   // Reset connecting flag and connection attempts
   isConnecting = false;
   connectionAttempts = 0;
+  console.log('Reset connection state variables');
 
-  // Attempt to connect
-  connectWebSocket();
+  // Force a small delay before attempting to connect
+  console.log('Scheduling reconnection attempt after delay');
+  setTimeout(() => {
+    console.log('Executing delayed reconnection');
+    // Attempt to connect
+    connectWebSocket();
+
+    // Notify all connection listeners that we're attempting to reconnect
+    console.log(`Notifying ${connectionCallbacks.length} connection listeners`);
+    connectionCallbacks.forEach(cb => cb(false));
+  }, 500); // Increased delay for better stability
 
   return true;
 }
