@@ -1,10 +1,11 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Send, Paperclip, FileText, X } from "lucide-react"
 import { getUser } from "../../lib/userData"
 import { format } from 'date-fns'
+import { v4 as uuidv4 } from 'uuid'
 import { sendMessage } from '@/lib/websocket'
 import { Message, FileAttachment } from '@/types'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -204,7 +205,7 @@ export default function ChatWindow({
       if (isSageChat) {
         // Handle SAGE chat differently - use the AI backend
         const userMessage: Message = {
-          id: Date.now().toString(),
+          id: uuidv4(),
           senderId: currentUserId,
           receiverId: otherUserId,
           content: newMessage.trim() || (attachment ? `Sent a file: ${attachment.name}` : ''),
@@ -214,10 +215,8 @@ export default function ChatWindow({
           role: 'user'
         };
 
-        // Update local state with user message
-        setAllMessages((prev) => [...prev, userMessage]);
-
         // Save the user message via WebSocket or API for persistence
+        // Note: We don't update local state here because the WebSocket listener will do that
         const sentViaWebSocket = sendMessage('NEW_MESSAGE', userMessage);
 
         if (!sentViaWebSocket) {
@@ -269,7 +268,7 @@ export default function ChatWindow({
 
           // Create AI response message
           const aiMessage: Message = {
-            id: (Date.now() + 1).toString(),
+            id: uuidv4(),
             senderId: 'sage',
             receiverId: currentUserId,
             content: data.answer,
@@ -280,10 +279,8 @@ export default function ChatWindow({
             role: 'assistant'
           };
 
-          // Update local state with AI response
-          setAllMessages((prev) => [...prev, aiMessage]);
-
-          // Also save the message via WebSocket or API for persistence
+          // Save the AI response via WebSocket or API for persistence
+          // Note: We don't update local state here because the WebSocket listener will do that
           const sentViaWebSocket = sendMessage('NEW_MESSAGE', aiMessage);
 
           if (!sentViaWebSocket) {
@@ -310,7 +307,7 @@ export default function ChatWindow({
 
           // Add error message
           const errorMessage: Message = {
-            id: (Date.now() + 1).toString(),
+            id: uuidv4(),
             senderId: 'sage',
             receiverId: currentUserId,
             content: 'Sorry, I encountered an error processing your request. Please try again later.',
@@ -320,12 +317,23 @@ export default function ChatWindow({
             role: 'assistant'
           };
 
-          setAllMessages((prev) => [...prev, errorMessage]);
+          // Save the error message via WebSocket or API for persistence
+          const sentViaWebSocket = sendMessage('NEW_MESSAGE', errorMessage);
+
+          if (!sentViaWebSocket) {
+            await fetch('/api/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(errorMessage),
+            });
+          }
         }
       } else {
         // Regular user-to-user chat
         const message = {
-          id: Date.now().toString(),
+          id: uuidv4(),
           senderId: currentUserId,
           receiverId: otherUserId,
           content: newMessage.trim() || (attachment ? `Sent a file: ${attachment.name}` : ''),
@@ -334,10 +342,8 @@ export default function ChatWindow({
           attachment
         };
 
-        // Update local state first for immediate UI update
-        setAllMessages((prev) => [...prev, message]);
-
-        // Try to send message via WebSocket first
+        // Save the message via WebSocket or API for persistence
+        // Note: We don't update local state here because the WebSocket listener will do that
         const sentViaWebSocket = sendMessage('NEW_MESSAGE', message);
 
         // If WebSocket is not available, send via REST API
