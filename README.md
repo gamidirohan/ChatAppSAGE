@@ -23,12 +23,25 @@ npm install
 
 ### Running the Development Server
 
+#### Option 1: Run Next.js and WebSocket Server Separately
+
 ```bash
-# Start the Next.js development server
+# Terminal 1: Start the Next.js development server
 npm run dev
+
+# Terminal 2: Start the WebSocket server
+npm run websocket
+```
+
+#### Option 2: Run Both Servers with a Single Command
+
+```bash
+# Start both the Next.js server and WebSocket server
+npm run dev:all
 ```
 
 The application will be available at [http://localhost:3000](http://localhost:3000).
+The WebSocket server will run on port 8080.
 
 ### Running the Webhook Server
 
