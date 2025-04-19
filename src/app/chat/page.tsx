@@ -145,6 +145,14 @@ export default function ChatPage() {
           // If we're currently viewing the conversation with this user,
           // mark the message as read immediately
           const newMessage = data.payload;
+
+          // Check if this message already exists in our state (to prevent duplicates)
+          const messageExists = messages.some(m => m.id === newMessage.id);
+          if (messageExists) {
+            // Skip adding this message as it's already in our state
+            return;
+          }
+
           if (
             user && // Make sure user is not null
             newMessage.senderId !== user.id &&
