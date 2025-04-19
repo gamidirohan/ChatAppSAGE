@@ -217,6 +217,19 @@ export default function ChatWindow({
         // Update local state with user message
         setAllMessages((prev) => [...prev, userMessage]);
 
+        // Save the user message via WebSocket or API for persistence
+        const sentViaWebSocket = sendMessage('NEW_MESSAGE', userMessage);
+
+        if (!sentViaWebSocket) {
+          await fetch('/api/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userMessage),
+          });
+        }
+
         // Process the user message as a document for the knowledge graph
         processMessageAsDocument(userMessage).catch(err => {
           console.error('Failed to process user message as document:', err);
