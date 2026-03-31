@@ -32,26 +32,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(data);
       }
 
-      // If FastAPI call fails, fall back to mock response
-      console.warn('FastAPI call failed, using mock response');
+      const errorPayload = await fastApiResponse.json().catch(() => null);
+      return NextResponse.json(
+        {
+          error: errorPayload?.error || errorPayload?.detail || 'Failed to process document',
+          status: fastApiResponse.status,
+        },
+        { status: fastApiResponse.status }
+      );
     } catch (fastApiError) {
       console.error('Error calling FastAPI:', fastApiError);
-      // Continue to mock response
+      return NextResponse.json(
+        {
+          error: 'Failed to reach document processing backend',
+          message: fastApiError instanceof Error ? fastApiError.message : 'Unknown error',
+        },
+        { status: 502 }
+      );
     }
-
-    // Option 2: Mock response (fallback if FastAPI is not available)
-    // Simulate a delay to mimic processing
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    return NextResponse.json({
-      success: true,
-      message: 'Document processed successfully (mock response)',
-      documentId: 'doc-' + Date.now(),
-      entities: ['entity1', 'entity2', 'entity3'],
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type
-    })
   } catch (error) {
     console.error('Error processing document:', error)
     return NextResponse.json(

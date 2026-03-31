@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 const messagesFilePath = path.join(process.cwd(), 'src', 'data', 'messages.json');
+const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
 
 // Ensure the data directory exists
 const ensureDirectoryExists = () => {
@@ -53,6 +54,11 @@ export async function POST(request: NextRequest) {
       content: message.content,
       timestamp: message.timestamp || new Date().toISOString(),
       read: message.read || false,
+      ...(message.role ? { role: message.role } : {}),
+      ...(Array.isArray(message.thinking) ? { thinking: message.thinking } : {}),
+      ...(message.isAiResponse ? { isAiResponse: message.isAiResponse } : {}),
+      ...(message.trace ? { trace: message.trace } : {}),
+      ...(typeof message.skipGraphSync === 'boolean' ? { skipGraphSync: message.skipGraphSync } : {}),
       // Preserve attachment if present
       ...(message.attachment ? { attachment: message.attachment } : {})
     };
@@ -62,6 +68,29 @@ export async function POST(request: NextRequest) {
 
     // Write back to file
     fs.writeFileSync(messagesFilePath, JSON.stringify(messages, null, 2));
+
+    // Sync this message into Neo4j-backed SAGE graph.
+    if (!newMessage.skipGraphSync) {
+      try {
+        await fetch(`${FASTAPI_URL}/api/sync-messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [
+              {
+                id: newMessage.id,
+                senderId: newMessage.senderId,
+                receiverId: newMessage.receiverId,
+                content: newMessage.content,
+                timestamp: newMessage.timestamp,
+              },
+            ],
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to sync new message to graph:', error);
+      }
+    }
 
     return NextResponse.json(newMessage, { status: 201 });
   } catch (error) {

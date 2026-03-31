@@ -39,7 +39,18 @@ export async function POST(request: NextRequest) {
         "Step 1: Received user query",
         "Step 2: Attempted to call FastAPI backend but it was unavailable",
         "Step 3: Generated a fallback response"
-      ]
+      ],
+      trace: {
+        query: body.message,
+        query_type: 'fallback',
+        user_scoped: Boolean(body.user_id),
+        user_id: body.user_id ?? null,
+        matched_entities: [],
+        result_count: 0,
+        max_hop_count: 0,
+        retrieval_path: 'Fallback response',
+        evidence: [],
+      },
     })
   } catch (error) {
     console.error('Error in chat API:', error)

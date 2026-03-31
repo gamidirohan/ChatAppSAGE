@@ -83,14 +83,22 @@
     @apply overflow-auto;
   }
 
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Chat page specific styles */
   .chat-page-container {
-    @apply h-screen overflow-hidden;
+    @apply h-full min-h-0 overflow-hidden;
   }
 
   /* Make message area scrollable */
   .chat-message-area {
-    @apply flex-grow overflow-y-auto;
-    height: calc(100vh - 140px); /* Adjust based on header and input area height */
+    @apply flex-1 min-h-0 overflow-y-auto;
   }
 }

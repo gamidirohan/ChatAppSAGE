@@ -1,15 +1,17 @@
 'use client'
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Send, Paperclip, FileText, X } from "lucide-react"
+import { Send, Paperclip, FileText, Info, X } from "lucide-react"
 import { getUser } from "../../lib/userData"
 import { format } from 'date-fns'
 import { v4 as uuidv4 } from 'uuid'
 import { sendMessage } from '@/lib/websocket'
 import { Message, FileAttachment } from '@/types'
+import { uploadDocument } from '@/lib/api'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { processMessageAsDocument } from '@/lib/messageProcessor'
+import MessageTraceSheet from '@/app/components/MessageTraceSheet'
 
 type Props = {
   currentUserId: string
@@ -26,12 +28,15 @@ export default function ChatWindow({
     setAllMessages,
     otherUserName,
   }: Props) {
-    const [relevantMessages, setRelevantMessages] = useState<any[]>([]);
+    const [relevantMessages, setRelevantMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [displayName, setDisplayName] = useState(otherUserName || '');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [processingAttachmentName, setProcessingAttachmentName] = useState<string | null>(null);
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const [traceMessage, setTraceMessage] = useState<Message | null>(null);
+    const [isTraceOpen, setIsTraceOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -50,10 +55,7 @@ export default function ChatWindow({
       // Filter messages relevant to the current chat (just between these two users)
       const filteredMessages = allMessages.filter(
         (m) => (m.senderId === currentUserId && m.receiverId === otherUserId) ||
-               (m.senderId === otherUserId && m.receiverId === currentUserId) ||
-               // Handle the case where the current user ID is 'currentUser' in messages
-               (m.senderId === 'currentUser' && m.receiverId === otherUserId) ||
-               (m.senderId === otherUserId && m.receiverId === 'currentUser')
+               (m.senderId === otherUserId && m.receiverId === currentUserId)
       );
 
       // Log the filtered messages for debugging
@@ -182,15 +184,32 @@ export default function ChatWindow({
       }
     };
 
+    const persistMessage = async (message: Message) => {
+      const sentViaWebSocket = sendMessage('NEW_MESSAGE', message);
+
+      if (!sentViaWebSocket) {
+        await fetch('/api/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(message),
+        });
+      }
+    };
+
     const handleSendMessage = async () => {
       // Don't send if there's no message and no file
       if (!newMessage.trim() && !selectedFile) return;
 
+      const fileToProcess = selectedFile;
+      const plainTextMessage = newMessage.trim();
       let attachment: FileAttachment | undefined;
+      let processingAttachmentStarted = false;
 
       // Upload file if selected
-      if (selectedFile) {
-        const uploadedFile = await uploadFile(selectedFile);
+      if (fileToProcess) {
+        const uploadedFile = await uploadFile(fileToProcess);
         if (uploadedFile) {
           attachment = uploadedFile;
         } else {
@@ -201,6 +220,7 @@ export default function ChatWindow({
 
       // Check if this is a message to SAGE (AI assistant)
       const isSageChat = otherUserId === 'sage';
+      const attachmentOnlyMessage = Boolean(fileToProcess) && !plainTextMessage;
 
       if (isSageChat) {
         // Handle SAGE chat differently - use the AI backend
@@ -208,35 +228,76 @@ export default function ChatWindow({
           id: uuidv4(),
           senderId: currentUserId,
           receiverId: otherUserId,
-          content: newMessage.trim() || (attachment ? `Sent a file: ${attachment.name}` : ''),
+          content: plainTextMessage || (attachment ? `Sent a file: ${attachment.name}` : ''),
           timestamp: new Date().toISOString(),
           read: true,
           attachment,
+          skipGraphSync: attachmentOnlyMessage,
           role: 'user'
         };
 
         // Save the user message via WebSocket or API for persistence
         // Note: We don't update local state here because the WebSocket listener will do that
-        const sentViaWebSocket = sendMessage('NEW_MESSAGE', userMessage);
+        await persistMessage(userMessage);
 
-        if (!sentViaWebSocket) {
-          await fetch('/api/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(userMessage),
+        // For SAGE attachments, process the real file contents instead of a synthetic
+        // "Sent a file" placeholder document.
+        if (fileToProcess) {
+          processingAttachmentStarted = true;
+          setProcessingAttachmentName(fileToProcess.name);
+          try {
+            await uploadDocument(fileToProcess);
+          } catch (error) {
+            console.error('Error processing uploaded file for SAGE:', error);
+
+            const fileErrorMessage: Message = {
+              id: uuidv4(),
+              senderId: 'sage',
+              receiverId: currentUserId,
+              content: `I could save "${fileToProcess.name}", but I couldn't process its contents yet. Please try again with a PDF or TXT file, or use the Upload page if the issue continues.`,
+              timestamp: new Date().toISOString(),
+              read: false,
+              isAiResponse: true,
+              skipGraphSync: true,
+              role: 'assistant'
+            };
+
+            await persistMessage(fileErrorMessage);
+            setNewMessage('');
+            clearSelectedFile();
+            setProcessingAttachmentName(null);
+            return;
+          }
+        } else {
+          processMessageAsDocument(userMessage).catch(err => {
+            console.error('Failed to process user message as document:', err);
           });
         }
-
-        // Process the user message as a document for the knowledge graph
-        processMessageAsDocument(userMessage).catch(err => {
-          console.error('Failed to process user message as document:', err);
-        });
 
         // Clear input and selected file
         setNewMessage('');
         clearSelectedFile();
+
+        if (attachmentOnlyMessage && attachment) {
+          const readyMessage: Message = {
+            id: uuidv4(),
+            senderId: 'sage',
+            receiverId: currentUserId,
+            content: `I've finished processing "${attachment.name}" and added it to my knowledge base. You can ask me what you want to know about it now.`,
+            timestamp: new Date().toISOString(),
+            read: false,
+            isAiResponse: true,
+            skipGraphSync: true,
+            role: 'assistant'
+          };
+
+          setProcessingAttachmentName(null);
+          await persistMessage(readyMessage);
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+          return;
+        }
 
         try {
           // Get previous messages for context
@@ -252,7 +313,8 @@ export default function ChatWindow({
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              message: userMessage.content,
+              message: plainTextMessage,
+              user_id: currentUserId,
               history: relevantMessages.map(m => ({
                 role: m.senderId === currentUserId ? 'user' : 'assistant',
                 content: m.content
@@ -275,23 +337,14 @@ export default function ChatWindow({
             timestamp: new Date().toISOString(),
             read: false,
             thinking: data.thinking || [],
+            trace: data.trace || undefined,
             isAiResponse: true,
             role: 'assistant'
           };
 
           // Save the AI response via WebSocket or API for persistence
           // Note: We don't update local state here because the WebSocket listener will do that
-          const sentViaWebSocket = sendMessage('NEW_MESSAGE', aiMessage);
-
-          if (!sentViaWebSocket) {
-            await fetch('/api/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(aiMessage),
-            });
-          }
+          await persistMessage(aiMessage);
 
           // Process the AI response as a document for the knowledge graph
           processMessageAsDocument(aiMessage).catch(err => {
@@ -318,16 +371,10 @@ export default function ChatWindow({
           };
 
           // Save the error message via WebSocket or API for persistence
-          const sentViaWebSocket = sendMessage('NEW_MESSAGE', errorMessage);
-
-          if (!sentViaWebSocket) {
-            await fetch('/api/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(errorMessage),
-            });
+          await persistMessage(errorMessage);
+        } finally {
+          if (processingAttachmentStarted) {
+            setProcessingAttachmentName(null);
           }
         }
       } else {
@@ -344,26 +391,10 @@ export default function ChatWindow({
 
         // Save the message via WebSocket or API for persistence
         // Note: We don't update local state here because the WebSocket listener will do that
-        const sentViaWebSocket = sendMessage('NEW_MESSAGE', message);
-
-        // If WebSocket is not available, send via REST API
-        if (!sentViaWebSocket) {
-          try {
-            console.log('WebSocket unavailable, sending message via API');
-            const response = await fetch('/api/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(message),
-            });
-
-            if (!response.ok) {
-              console.error('Failed to send message via API:', await response.text());
-            }
-          } catch (error) {
-            console.error('Error sending message via API:', error);
-          }
+        try {
+          await persistMessage(message);
+        } catch (error) {
+          console.error('Error sending message via API:', error);
         }
 
         // Process the message as a document for the knowledge graph
@@ -395,15 +426,20 @@ export default function ChatWindow({
       return format(new Date(timestamp), 'h:mm a');
     };
 
-    return (
-      <div className="flex flex-col h-full">
+    const openTrace = (message: Message) => {
+      setTraceMessage(message);
+      setIsTraceOpen(true);
+    };
+
+  return (
+      <div className="flex flex-col h-full min-h-0">
         {/* Chat header */}
         <div className="px-4 py-2 border-b flex-shrink-0 bg-white dark:border-gray-700 dark:bg-gray-800">
           <div className="font-medium dark:text-white">Chat with {displayName}</div>
         </div>
 
         {/* Message area */}
-        <div className="chat-message-area p-4 pt-6 bg-gray-50 dark:bg-gray-900">
+        <div className="chat-message-area p-4 pt-6 bg-gray-50 dark:bg-gray-900 min-h-0">
           <div className="space-y-4">
             {relevantMessages.map((m) => (
               <div
@@ -454,21 +490,60 @@ export default function ChatWindow({
                     </div>
                   )}
                   <div
-                    className={`text-xs mt-1 ${
-                      m.senderId === currentUserId ? 'text-right' : 'text-left'
-                    } text-gray-500 dark:text-gray-400`}
+                    className={`mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 ${
+                      m.senderId === currentUserId ? 'justify-end' : 'justify-between'
+                    }`}
                   >
-                    {formatMessageTime(m.timestamp)}
+                    <span>{formatMessageTime(m.timestamp)}</span>
+                    {m.senderId === 'sage' && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
+                              onClick={() => openTrace(m)}
+                              aria-label="Open answer insight"
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Answer insight</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 </div>
               </div>
             ))}
+            {processingAttachmentName && (
+              <div className="flex justify-start">
+                <div className="max-w-[70%]">
+                  <div className="rounded-lg rounded-bl-none border border-gray-200 bg-white px-4 py-3 text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                      <div>
+                        <div className="font-medium">Processing attachment</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-300">
+                          Adding "{processingAttachmentName}" to the knowledge base so it can be queried accurately.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Working...
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </div>
 
         {/* Input area */}
-        <div className="border-t p-2 pt-4 flex flex-col gap-2 flex-shrink-0 bg-white dark:bg-gray-800 dark:border-gray-700 sticky bottom-0">
+        <div className="border-t p-2 pt-4 flex flex-col gap-2 flex-shrink-0 bg-white dark:bg-gray-800 dark:border-gray-700">
           {/* File upload preview */}
           {selectedFile && (
             <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-gray-700 rounded-md">
@@ -505,7 +580,7 @@ export default function ChatWindow({
                     size="icon"
                     className="h-9 w-9"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
+                    disabled={isUploading || Boolean(processingAttachmentName)}
                   >
                     <Paperclip className="h-4 w-4" />
                   </Button>
@@ -530,15 +605,15 @@ export default function ChatWindow({
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               className="flex-1 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-              disabled={isUploading}
+              disabled={isUploading || Boolean(processingAttachmentName)}
             />
 
             <Button
               onClick={handleSendMessage}
               size="icon"
-              disabled={isUploading || (!newMessage.trim() && !selectedFile)}
+              disabled={isUploading || Boolean(processingAttachmentName) || (!newMessage.trim() && !selectedFile)}
             >
-              {isUploading ? (
+              {isUploading || processingAttachmentName ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
               ) : (
                 <Send className="h-4 w-4" />
@@ -546,6 +621,12 @@ export default function ChatWindow({
             </Button>
           </div>
         </div>
+
+        <MessageTraceSheet
+          message={traceMessage}
+          open={isTraceOpen}
+          onOpenChange={setIsTraceOpen}
+        />
       </div>
     )
   }

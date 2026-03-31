@@ -14,7 +14,10 @@
     "email": "alice@example.com",
     "password": "password123",
     "avatar": "👩",
-    "team": ["Project Alpha", "Marketing"]
+    "team": [
+      "Project Alpha",
+      "Marketing"
+    ]
   },
   {
     "id": "2",
@@ -22,7 +25,10 @@
     "email": "bob@example.com",
     "password": "password123",
     "avatar": "👨",
-    "team": ["Project Alpha", "Engineering"]
+    "team": [
+      "Project Alpha",
+      "Engineering"
+    ]
   },
   {
     "id": "3",
@@ -30,7 +36,10 @@
     "email": "charlie@example.com",
     "password": "password123",
     "avatar": "🧑",
-    "team": ["Project Beta", "Design"]
+    "team": [
+      "Project Beta",
+      "Design"
+    ]
   },
   {
     "id": "4",
@@ -38,7 +47,10 @@
     "email": "diana@example.com",
     "password": "password123",
     "avatar": "👱‍♀️",
-    "team": ["Project Beta", "Engineering"]
+    "team": [
+      "Project Beta",
+      "Engineering"
+    ]
   },
   {
     "id": "5",
@@ -46,7 +58,10 @@
     "email": "elijah@example.com",
     "password": "password123",
     "avatar": "👨‍🦱",
-    "team": ["Project Alpha", "Design"]
+    "team": [
+      "Project Alpha",
+      "Design"
+    ]
   },
   {
     "id": "6",
@@ -54,7 +69,10 @@
     "email": "fiona@example.com",
     "password": "password123",
     "avatar": "👩‍🦰",
-    "team": ["Project Gamma", "Management"]
+    "team": [
+      "Project Gamma",
+      "Management"
+    ]
   },
   {
     "id": "7",
@@ -62,7 +80,10 @@
     "email": "george@example.com",
     "password": "password123",
     "avatar": "👨‍🦳",
-    "team": ["Project Gamma", "Engineering"]
+    "team": [
+      "Project Gamma",
+      "Engineering"
+    ]
   },
   {
     "id": "8",
@@ -70,7 +91,10 @@
     "email": "hannah@example.com",
     "password": "password123",
     "avatar": "👩‍🦱",
-    "team": ["Project Beta", "Management"]
+    "team": [
+      "Project Beta",
+      "Management"
+    ]
   },
   {
     "id": "currentUser",
@@ -78,6 +102,17 @@
     "email": "test@example.com",
     "password": "password123",
     "avatar": "🙂",
-    "team": ["Project Alpha", "Project Gamma"]
+    "team": [
+      "Project Alpha",
+      "Project Gamma"
+    ]
+  },
+  {
+    "id": "1774788188804",
+    "name": "bijade",
+    "email": "bijade1431@bitfami.com",
+    "password": "7n'3!R^wr?UbD8@",
+    "avatar": "🙂",
+    "team": []
   }
 ]

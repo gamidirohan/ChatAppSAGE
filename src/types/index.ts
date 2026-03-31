@@ -8,6 +8,40 @@ export interface FileAttachment {
   url: string;
 }
 
+export interface ChatTraceEvidence {
+  chunk_id?: string;
+  chunk_summary?: string;
+  similarity?: number;
+  relationship?: string;
+  retrieval_path?: string;
+  hop_count?: number;
+  document?: {
+    doc_id?: string;
+    subject?: string;
+    sender?: string;
+    timestamp?: string;
+    source?: string;
+  };
+  related_node?: {
+    label?: string;
+    display_name?: string;
+    id?: string;
+  };
+}
+
+export interface ChatTrace {
+  query?: string;
+  query_type?: string;
+  user_scoped?: boolean;
+  user_id?: string | null;
+  matched_entities?: string[];
+  result_count?: number;
+  max_hop_count?: number;
+  retrieval_path?: string;
+  evidence?: ChatTraceEvidence[];
+  error?: string;
+}
+
 export interface Message {
   id: string;
   senderId: string;
@@ -19,6 +53,8 @@ export interface Message {
   isAiResponse?: boolean;
   role?: 'user' | 'assistant'; // For ChatInterface component
   attachment?: FileAttachment; // Optional file attachment
+  trace?: ChatTrace;
+  skipGraphSync?: boolean;
 }
 
 export interface User {

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Eye, EyeOff } from 'lucide-react'
 // import Link from 'next/link' - Uncomment if needed
 
 export default function LoginPage() {
@@ -25,6 +26,9 @@ export default function LoginPage() {
     password: '',
     confirmPassword: ''
   })
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const [error, setError] = useState('')
 
@@ -93,13 +97,26 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="password" className="text-sm font-medium dark:text-gray-200">Password</label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={loginData.password}
-                    onChange={(e) => setLoginData({...loginData, password: e.target.value})}
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showLoginPassword ? 'text' : 'password'}
+                      value={loginData.password}
+                      onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                      className="pr-10"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-9 w-9"
+                      onClick={() => setShowLoginPassword((show) => !show)}
+                      aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
               <CardFooter>
@@ -141,23 +158,49 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="register-password" className="text-sm font-medium dark:text-gray-200">Password</label>
-                  <Input
-                    id="register-password"
-                    type="password"
-                    value={registerData.password}
-                    onChange={(e) => setRegisterData({...registerData, password: e.target.value})}
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      id="register-password"
+                      type={showRegisterPassword ? 'text' : 'password'}
+                      value={registerData.password}
+                      onChange={(e) => setRegisterData({...registerData, password: e.target.value})}
+                      className="pr-10"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-9 w-9"
+                      onClick={() => setShowRegisterPassword((show) => !show)}
+                      aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="confirm-password" className="text-sm font-medium dark:text-gray-200">Confirm Password</label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    value={registerData.confirmPassword}
-                    onChange={(e) => setRegisterData({...registerData, confirmPassword: e.target.value})}
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      id="confirm-password"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={registerData.confirmPassword}
+                      onChange={(e) => setRegisterData({...registerData, confirmPassword: e.target.value})}
+                      className="pr-10"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 h-9 w-9"
+                      onClick={() => setShowConfirmPassword((show) => !show)}
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
               <CardFooter>

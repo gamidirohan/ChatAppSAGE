@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import ChatWindow from '@/app/components/ChatWindow'
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Menu } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { useMediaQuery } from "@/hooks/use-mobile"
@@ -21,6 +22,7 @@ export default function ChatPage() {
   const [selectedUserName, setSelectedUserName] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [users, setUsers] = useState<UserWithLastMessage[]>([])
+  const [contactSearch, setContactSearch] = useState('')
   const [isConnected, setIsConnected] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)")
 
@@ -39,13 +41,9 @@ export default function ChatPage() {
         // Add last message info to each user
         const usersWithLastMessage = filteredUsers.map(u => {
           // Find the last message between current user and this user
-          // Note: We need to handle the case where the current user ID might be different in messages
           const relevantMessages = messages.filter((m: Message) =>
             (m.senderId === user.id && m.receiverId === u.id) ||
-            (m.senderId === u.id && m.receiverId === user.id) ||
-            // Handle the case where the current user ID is 'currentUser' in messages
-            (m.senderId === 'currentUser' && m.receiverId === u.id) ||
-            (m.senderId === u.id && m.receiverId === 'currentUser')
+            (m.senderId === u.id && m.receiverId === user.id)
           );
 
           // Sort by timestamp, most recent first
@@ -204,6 +202,24 @@ export default function ChatPage() {
     }
   }, [user, loading, router]);
 
+  // One-time sync of local JSON users/messages into graph backend for this browser session.
+  useEffect(() => {
+    if (!user) return;
+    const syncKey = 'graph_sync_done';
+    if (sessionStorage.getItem(syncKey) === '1') return;
+
+    fetch('/api/messages/sync', { method: 'POST' })
+      .then((response) => response.json())
+      .then((result) => {
+        if (result?.success) {
+          sessionStorage.setItem(syncKey, '1');
+        }
+      })
+      .catch((error) => {
+        console.error('Initial graph sync failed:', error);
+      });
+  }, [user]);
+
   // If still loading or not authenticated, show nothing
   if (loading || !user) {
     return null;
@@ -255,11 +271,29 @@ export default function ChatPage() {
   };
 
   const userList = (
-    <div className="w-full h-full overflow-y-auto bg-white dark:bg-gray-900">
-      <div className="p-4 font-semibold dark:text-white">Contacts</div>
+    <div className="w-full h-full min-h-0 overflow-y-auto scrollbar-hidden bg-white dark:bg-gray-900">
+      <div className="p-4 space-y-3">
+        <div className="font-semibold dark:text-white">Contacts</div>
+        <Input
+          value={contactSearch}
+          onChange={(e) => setContactSearch(e.target.value)}
+          placeholder="Search contacts..."
+          className="h-9"
+        />
+      </div>
       <Separator className="dark:bg-gray-700" />
       <div className="space-y-1">
-        {users.map((user) => (
+        {users
+          .filter((entry) => {
+            if (!contactSearch.trim()) return true;
+            const query = contactSearch.toLowerCase();
+            return (
+              entry.name.toLowerCase().includes(query) ||
+              entry.id.toLowerCase().includes(query) ||
+              (entry.email || '').toLowerCase().includes(query)
+            );
+          })
+          .map((user) => (
           <div
             key={user.id}
             className={`p-3 rounded flex items-center gap-3 cursor-pointer
@@ -302,7 +336,7 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="flex chat-page-container">
+    <div className="flex h-full min-h-0 chat-page-container">
       {/* Mobile: Sidebar in a Sheet */}
       {isMobile ? (
         <div className="fixed top-0 left-0 z-10 p-4">
@@ -312,7 +346,7 @@ export default function ChatPage() {
                 <Menu className="h-6 w-6" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[250px] sm:w-[300px] p-0">
+            <SheetContent side="left" className="w-[250px] sm:w-[300px] p-0 overflow-hidden">
               {userList}
               <button className="hidden mobile-menu-close">close</button>
             </SheetContent>
@@ -320,13 +354,13 @@ export default function ChatPage() {
         </div>
       ) : (
         /* Desktop: Sidebar always visible */
-        <div className="w-[320px] border-r h-full overflow-y-auto bg-white dark:border-gray-700">
+        <div className="w-[320px] border-r h-full min-h-0 overflow-hidden bg-white dark:border-gray-700">
           {userList}
         </div>
       )}
 
       {/* Chat window */}
-      <div className={`${isMobile ? "w-full" : "flex-1"} h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900 relative`}>
+      <div className={`${isMobile ? "w-full" : "flex-1"} h-full min-h-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900 relative`}>
         {/* Connection status indicator */}
         <div className={`absolute top-2 right-2 flex items-center gap-2 px-3 py-1 rounded-full text-xs transition-opacity ${isConnected ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'} ${isConnected ? 'opacity-0 hover:opacity-100' : 'opacity-100'}`}>
           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>

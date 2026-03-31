@@ -106,7 +106,7 @@ export default function Navbar({ className = "" }: { className?: string }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
                   <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user.avatar || user.name.charAt(0).toUpperCase()}
                   </div>
                 </Button>
               </DropdownMenuTrigger>

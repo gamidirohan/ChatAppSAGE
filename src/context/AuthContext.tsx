@@ -15,6 +15,7 @@ type AuthContextType = {
   user: User | null
   login: (email: string, password: string) => Promise<void>
   register: (name: string, email: string, password: string) => Promise<void>
+  updateProfile: (updates: { name: string; email: string; avatar?: string }) => Promise<void>
   logout: () => void
   loading: boolean
 }
@@ -25,6 +26,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+
+  const saveSessionUser = (sessionUser: User) => {
+    localStorage.setItem('user', JSON.stringify(sessionUser))
+    setUser(sessionUser)
+  }
 
   // Check if user is logged in on page load
   useEffect(() => {
@@ -44,8 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Invalid credentials');
       }
       
-      localStorage.setItem('user', JSON.stringify(authenticatedUser))
-      setUser(authenticatedUser)
+      saveSessionUser(authenticatedUser)
       router.push('/chat')
     } catch (error) {
       console.error('Login failed', error)
@@ -59,22 +64,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (name: string, email: string, password: string) => {
     setLoading(true)
     try {
-      // This would be an API call in a real app
-      // Mock successful registration
-      const mockUser = {
-        id: Date.now().toString(),
-        name,
-        email
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Registration failed');
       }
-      
-      localStorage.setItem('user', JSON.stringify(mockUser))
-      setUser(mockUser)
+
+      saveSessionUser(payload)
       router.push('/chat')
     } catch (error) {
       console.error('Registration failed', error)
       throw error
     } finally {
       setLoading(false)
+    }
+  }
+
+  const updateProfile = async (updates: { name: string; email: string; avatar?: string }) => {
+    const currentUser = user
+    if (!currentUser) {
+      throw new Error('No authenticated user')
+    }
+
+    try {
+      const response = await fetch(`/api/users/${currentUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Profile update failed')
+      }
+
+      saveSessionUser(payload)
+    } catch (error) {
+      console.error('Profile update failed', error)
+      throw error
     }
   }
 
@@ -85,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, register, updateProfile, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )

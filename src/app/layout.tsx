@@ -22,11 +22,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="light" suppressHydrationWarning>
-      <body className={`${inter.className} flex flex-col min-h-screen`}>
+      <body className={`${inter.className} flex flex-col h-screen overflow-hidden`}>
         <AuthProvider>
           <ThemeProvider>
             <Navbar className="flex-shrink-0" />
-            <main className="flex-grow overflow-auto">{children}</main>
+            <main className="flex-1 min-h-0 overflow-auto">{children}</main>
           </ThemeProvider>
         </AuthProvider>
       </body>

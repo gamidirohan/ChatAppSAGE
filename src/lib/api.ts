@@ -36,7 +36,7 @@ function getApiUrl(endpoint: string): string {
  * @param history Optional chat history
  * @returns Object with answer and thinking steps
  */
-export async function sendChatMessage(message: string, history: Message[] = []) {
+export async function sendChatMessage(message: string, history: Message[] = [], userId?: string) {
   try {
     const url = getApiUrl(API_CONFIG.ENDPOINTS.CHAT);
 
@@ -53,7 +53,8 @@ export async function sendChatMessage(message: string, history: Message[] = []) 
       },
       body: JSON.stringify({
         message,
-        history: formattedHistory
+        history: formattedHistory,
+        user_id: userId
       }),
     });
 
