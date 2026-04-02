@@ -1,0 +1,16 @@
+[
+  {
+    "id": "group1",
+    "name": "Project Alpha Weekly Review",
+    "description": "Admin-managed group for the weekly Project Alpha sync.",
+    "avatar": "PA",
+    "memberIds": ["1", "2", "4", "currentUser"]
+  },
+  {
+    "id": "group2",
+    "name": "Leadership Updates",
+    "description": "Admin-managed leadership communication channel.",
+    "avatar": "LU",
+    "memberIds": ["6", "8", "currentUser"]
+  }
+]

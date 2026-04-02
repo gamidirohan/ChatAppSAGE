@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { backendFetchJson, BackendProxyError } from '@/lib/server/backend'
 import { getSessionUserId } from '@/lib/server/session'
+import { User } from '@/types'
 
-export async function POST(request: NextRequest) {
+export async function PUT(request: NextRequest) {
   try {
     const userId = await getSessionUserId()
     if (!userId) {
@@ -11,19 +12,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const data = await backendFetchJson('/api/chat', {
-      method: 'POST',
+    const user = await backendFetchJson<User>('/api/profile', {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...body,
-        user_id: userId,
-      }),
+      body: JSON.stringify(body),
+      userId,
     })
-    return NextResponse.json(data)
+    return NextResponse.json(user)
   } catch (error) {
     if (error instanceof BackendProxyError) {
       return NextResponse.json(error.detail, { status: error.status })
     }
-    return NextResponse.json({ detail: 'Failed to process chat request' }, { status: 500 })
+    return NextResponse.json({ detail: 'Failed to update profile' }, { status: 500 })
   }
 }

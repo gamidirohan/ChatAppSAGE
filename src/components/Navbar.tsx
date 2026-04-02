@@ -45,8 +45,8 @@ export default function Navbar({ className = "" }: { className?: string }) {
     return () => clearInterval(interval)
   }, [])
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     router.push('/login')
   }
 
@@ -65,11 +65,11 @@ export default function Navbar({ className = "" }: { className?: string }) {
         </Link>
 
         <div className="flex items-center gap-4">
-          {/* Backend status indicator */}
+          {/* Backend API status indicator */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex items-center">
+                <div className="flex items-center" aria-label={`Backend API ${backendStatus}`}>
                   <div className={`w-2.5 h-2.5 rounded-full mr-1 ${{
                     'loading': 'bg-yellow-500 animate-pulse',
                     'online': 'bg-green-500',
@@ -79,10 +79,10 @@ export default function Navbar({ className = "" }: { className?: string }) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Backend: {{
-                  'loading': 'Checking connection...',
-                  'online': 'Connected',
-                  'offline': 'Disconnected'
+                <p>Backend API: {{
+                  'loading': 'Checking...',
+                  'online': 'Online',
+                  'offline': 'Offline'
                 }[backendStatus]}</p>
               </TooltipContent>
             </Tooltip>
@@ -122,7 +122,7 @@ export default function Navbar({ className = "" }: { className?: string }) {
                     Profile
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLogout} className="flex items-center cursor-pointer text-red-600 dark:text-red-400">
+                <DropdownMenuItem onClick={() => void handleLogout()} className="flex items-center cursor-pointer text-red-600 dark:text-red-400">
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
                 </DropdownMenuItem>

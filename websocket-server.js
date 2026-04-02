@@ -1,104 +1,147 @@
-/**
- * Simple WebSocket server for the chat application
- *
- * Run this with: node websocket-server.js
- */
+const crypto = require('crypto')
+const http = require('http')
+const { URL } = require('url')
 
-const WebSocket = require('ws');
-const fs = require('fs');
-const path = require('path');
+const WebSocket = require('ws')
 
-// Configuration
-const PORT = process.env.PORT || 8080;
-const MESSAGES_FILE = path.join(__dirname, 'src', 'data', 'messages.json');
+const PORT = Number(process.env.PORT || 8080)
+const SESSION_SECRET = process.env.SESSION_SECRET || 'sage-dev-session-secret'
+const WS_INTERNAL_SECRET = process.env.WS_INTERNAL_SECRET || SESSION_SECRET
 
-// Log the messages file path for debugging
-console.log('Messages file path:', MESSAGES_FILE);
+const userSockets = new Map()
 
-// Create WebSocket server with error handling
-let wss;
-try {
-  wss = new WebSocket.Server({ port: PORT });
-  console.log(`WebSocket server created successfully on port ${PORT}`);
-} catch (error) {
-  console.error(`Failed to create WebSocket server on port ${PORT}:`, error);
-  process.exit(1); // Exit with error code
-}
+function verifySocketToken(token) {
+  if (!token) {
+    return null
+  }
 
-// Store connected clients
-const clients = new Set();
+  const [encodedPayload, providedSignature] = token.split('.')
+  if (!encodedPayload || !providedSignature) {
+    return null
+  }
 
-// Helper function to read messages from file
-function readMessages() {
+  const actualSignature = crypto.createHmac('sha256', SESSION_SECRET).update(encodedPayload).digest('base64url')
+  const provided = Buffer.from(providedSignature)
+  const actual = Buffer.from(actualSignature)
+  if (provided.length !== actual.length || !crypto.timingSafeEqual(provided, actual)) {
+    return null
+  }
+
   try {
-    if (!fs.existsSync(MESSAGES_FILE)) {
-      // Create empty messages file if it doesn't exist
-      fs.writeFileSync(MESSAGES_FILE, '[]', 'utf8');
-      return [];
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf-8'))
+    if (payload.kind !== 'socket' || payload.exp <= Date.now()) {
+      return null
     }
-    const data = fs.readFileSync(MESSAGES_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading messages file:', error);
-    return [];
+    return payload.sub || null
+  } catch {
+    return null
   }
 }
 
-// Helper function to broadcast a message to all connected clients
-function broadcast(message) {
-  const messageString = JSON.stringify(message);
-  clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(messageString);
-    }
-  });
+function addSocketForUser(userId, socket) {
+  if (!userSockets.has(userId)) {
+    userSockets.set(userId, new Set())
+  }
+  userSockets.get(userId).add(socket)
 }
 
-// Handle server errors
-wss.on('error', (error) => {
-  console.error('WebSocket server error:', error);
-});
+function removeSocketForUser(userId, socket) {
+  const sockets = userSockets.get(userId)
+  if (!sockets) {
+    return
+  }
 
-// Handle new WebSocket connections
-wss.on('connection', (ws, req) => {
-  console.log(`Client connected from ${req.socket.remoteAddress}`);
-  clients.add(ws);
+  sockets.delete(socket)
+  if (!sockets.size) {
+    userSockets.delete(userId)
+  }
+}
 
-  // Send initial messages to the client
-  const messages = readMessages();
-  ws.send(JSON.stringify({
-    type: 'INITIAL_MESSAGES',
-    payload: messages
-  }));
+function broadcastToUsers(payload) {
+  const uniqueUserIds = Array.from(new Set(payload.userIds || []))
+  const message = JSON.stringify(payload)
 
-  // Handle messages from clients
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message.toString());
-      console.log('Received message:', data.type);
-
-      if (data.type === 'NEW_MESSAGE') {
-        // Add the message to the messages file
-        const messages = readMessages();
-        messages.push(data.payload);
-        fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2), 'utf8');
-
-        // Broadcast the message to all clients
-        broadcast({
-          type: 'MESSAGE_CREATED',
-          payload: data.payload
-        });
-      }
-    } catch (error) {
-      console.error('Error processing message:', error);
+  uniqueUserIds.forEach((userId) => {
+    const sockets = userSockets.get(userId)
+    if (!sockets) {
+      return
     }
-  });
 
-  // Handle client disconnection
-  ws.on('close', () => {
-    console.log('Client disconnected');
-    clients.delete(ws);
-  });
-});
+    sockets.forEach((socket) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(message)
+      }
+    })
+  })
+}
 
-console.log(`WebSocket server running on port ${PORT}`);
+const server = http.createServer((req, res) => {
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ status: 'ok', connectedUsers: userSockets.size }))
+    return
+  }
+
+  if (req.method === 'POST' && req.url === '/broadcast') {
+    const internalSecret = req.headers['x-internal-secret']
+    if (internalSecret !== WS_INTERNAL_SECRET) {
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Unauthorized' }))
+      return
+    }
+
+    let body = ''
+    req.on('data', (chunk) => {
+      body += chunk.toString()
+    })
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body || '{}')
+        if (!Array.isArray(payload.userIds) || !payload.type) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Invalid payload' }))
+          return
+        }
+
+        broadcastToUsers(payload)
+        res.writeHead(202, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: true }))
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Invalid JSON' }))
+      }
+    })
+    return
+  }
+
+  res.writeHead(404, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ error: 'Not found' }))
+})
+
+const wss = new WebSocket.Server({ server, path: '/ws' })
+
+wss.on('connection', (socket, req) => {
+  const url = new URL(req.url, 'http://localhost')
+  const token = url.searchParams.get('token')
+  const userId = verifySocketToken(token)
+
+  if (!userId) {
+    socket.close(4001, 'Invalid token')
+    return
+  }
+
+  addSocketForUser(userId, socket)
+  socket.send(JSON.stringify({ type: 'CONNECTED', userId }))
+
+  socket.on('message', () => {
+    // Notification-only channel. Client-originated messages are ignored.
+  })
+
+  socket.on('close', () => {
+    removeSocketForUser(userId, socket)
+  })
+})
+
+server.listen(PORT, () => {
+  console.log(`WebSocket notification server running on port ${PORT}`)
+})

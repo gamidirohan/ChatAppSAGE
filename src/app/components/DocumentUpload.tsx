@@ -56,7 +56,7 @@ export default function DocumentUpload() {
         <FileText className="h-12 w-12 mx-auto mb-2 text-primary" />
         <h2 className="text-2xl font-semibold">Upload Document</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload PDF or TXT files to extract knowledge
+          Upload PDF, TXT, or DOCX files to extract knowledge
         </p>
       </div>
 
@@ -68,12 +68,12 @@ export default function DocumentUpload() {
             {file ? file.name : 'Click to select a file or drag and drop'}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Supports PDF and TXT files
+            Supports PDF, TXT, and DOCX files
           </p>
           <Input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.txt"
+            accept=".pdf,.txt,.docx"
             onChange={handleFileChange}
             className="hidden"
           />

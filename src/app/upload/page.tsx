@@ -8,7 +8,7 @@ export default function UploadPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Upload Documents</h1>
         <p className="text-muted-foreground">
-          Upload PDF or TXT files to extract knowledge and build your graph
+          Upload PDF, TXT, or DOCX files to extract knowledge and build your graph
         </p>
       </div>
 

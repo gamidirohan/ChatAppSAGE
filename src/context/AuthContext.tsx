@@ -1,117 +1,116 @@
 'use client'
 
-import { createContext, useState, useContext, useEffect } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { authenticateUser } from '@/lib/userData'
 
-type User = {
-  id: string
-  name: string
-  email: string
-  avatar?: string
-}
+import { AuthSession, User } from '@/types'
 
 type AuthContextType = {
   user: User | null
   login: (email: string, password: string) => Promise<void>
   register: (name: string, email: string, password: string) => Promise<void>
   updateProfile: (updates: { name: string; email: string; avatar?: string }) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   loading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+async function parseJsonSafe(response: Response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  const saveSessionUser = (sessionUser: User) => {
-    localStorage.setItem('user', JSON.stringify(sessionUser))
-    setUser(sessionUser)
-  }
-
-  // Check if user is logged in on page load
   useEffect(() => {
-    const storedUser = localStorage.getItem('user')
-    if (storedUser) {
-      setUser(JSON.parse(storedUser))
+    let cancelled = false
+
+    const loadSession = async () => {
+      try {
+        const response = await fetch('/api/auth/session', { cache: 'no-store' })
+        const payload = (await parseJsonSafe(response)) as AuthSession | null
+        if (!cancelled) {
+          setUser(payload?.user ?? null)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load auth session:', error)
+          setUser(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
     }
-    setLoading(false)
+
+    loadSession()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const login = async (email: string, password: string) => {
     setLoading(true)
     try {
-      const authenticatedUser = await authenticateUser(email, password);
-      
-      if (!authenticatedUser) {
-        throw new Error('Invalid credentials');
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const payload = await parseJsonSafe(response)
+      if (!response.ok) {
+        throw new Error((payload as { detail?: string } | null)?.detail || 'Login failed')
       }
-      
-      saveSessionUser(authenticatedUser)
+      setUser(payload as User)
       router.push('/chat')
-    } catch (error) {
-      console.error('Login failed', error)
-      throw error
     } finally {
       setLoading(false)
     }
   }
 
-  // Mock register function - would connect to API in real app
   const register = async (name: string, email: string, password: string) => {
     setLoading(true)
     try {
-      const response = await fetch('/api/users', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
-      });
-
-      const payload = await response.json().catch(() => null);
+      })
+      const payload = await parseJsonSafe(response)
       if (!response.ok) {
-        throw new Error(payload?.error || 'Registration failed');
+        throw new Error((payload as { detail?: string } | null)?.detail || 'Registration failed')
       }
-
-      saveSessionUser(payload)
+      setUser(payload as User)
       router.push('/chat')
-    } catch (error) {
-      console.error('Registration failed', error)
-      throw error
     } finally {
       setLoading(false)
     }
   }
 
   const updateProfile = async (updates: { name: string; email: string; avatar?: string }) => {
-    const currentUser = user
-    if (!currentUser) {
-      throw new Error('No authenticated user')
+    const response = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+    const payload = await parseJsonSafe(response)
+    if (!response.ok) {
+      throw new Error((payload as { detail?: string } | null)?.detail || 'Profile update failed')
     }
-
-    try {
-      const response = await fetch(`/api/users/${currentUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      })
-
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Profile update failed')
-      }
-
-      saveSessionUser(payload)
-    } catch (error) {
-      console.error('Profile update failed', error)
-      throw error
-    }
+    setUser(payload as User)
   }
 
-  const logout = () => {
-    localStorage.removeItem('user')
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
     setUser(null)
     router.push('/login')
   }

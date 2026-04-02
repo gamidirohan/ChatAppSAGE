@@ -154,7 +154,7 @@ export default function ProfilePage() {
             <Button asChild>
               <Link href="/chat">Back to chat</Link>
             </Button>
-            <Button variant="outline" onClick={logout}>
+            <Button variant="outline" onClick={() => void logout()}>
               Logout
             </Button>
           </div>

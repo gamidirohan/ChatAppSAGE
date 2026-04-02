@@ -1,343 +1,259 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import ChatWindow from '@/app/components/ChatWindow'
-import { Separator } from "@/components/ui/separator"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Menu } from "lucide-react"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { useMediaQuery } from "@/hooks/use-mobile"
-import { useAuth } from '@/context/AuthContext'
-import { getAllUsers } from '@/lib/userData'
 import { format } from 'date-fns'
-import { connectWebSocket, addMessageListener, addConnectionListener, manualReconnect } from '@/lib/websocket'
-import { Message, UserWithLastMessage } from '@/types'
+import { Menu } from 'lucide-react'
+
+import ChatWindow from '@/app/components/ChatWindow'
+import { useAuth } from '@/context/AuthContext'
+import { useMediaQuery } from '@/hooks/use-mobile'
+import { addConnectionListener, addMessageListener, connectWebSocket, manualReconnect } from '@/lib/websocket'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { ConversationSummary, Message } from '@/types'
+
+async function parseJsonSafe<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
+}
+
 export default function ChatPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const [currentUserId, setCurrentUserId] = useState('')
-  const [selectedUserId, setSelectedUserId] = useState('')
-  const [selectedUserName, setSelectedUserName] = useState('')
+  const isMobile = useMediaQuery('(max-width: 768px)')
+
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [selectedConversationId, setSelectedConversationId] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
-  const [users, setUsers] = useState<UserWithLastMessage[]>([])
   const [contactSearch, setContactSearch] = useState('')
-  const [isConnected, setIsConnected] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 768px)")
+  const [isConnected, setIsConnected] = useState(false)
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false)
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [pageError, setPageError] = useState<string | null>(null)
 
-  // Load users and messages from database
+  const selectedConversationIdRef = useRef(selectedConversationId)
+
   useEffect(() => {
-    const loadData = async () => {
-      if (!user) return;
+    selectedConversationIdRef.current = selectedConversationId
+  }, [selectedConversationId])
 
-      try {
-        // Load users
-        const userList = await getAllUsers();
+  const loadConversations = async (preferredConversationId?: string) => {
+    setIsLoadingConversations(true)
+    setPageError(null)
 
-        // Filter out current user
-        const filteredUsers = user ? userList.filter(u => u.id !== user.id) : [];
-
-        // Add last message info to each user
-        const usersWithLastMessage = filteredUsers.map(u => {
-          // Find the last message between current user and this user
-          const relevantMessages = messages.filter((m: Message) =>
-            (m.senderId === user.id && m.receiverId === u.id) ||
-            (m.senderId === u.id && m.receiverId === user.id)
-          );
-
-          // Sort by timestamp, most recent first
-            relevantMessages.sort((a: { timestamp: string }, b: { timestamp: string }) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-            );
-
-          // Check if there are any unread messages from this user
-          const hasUnreadMessages = relevantMessages.some(
-            m => m.senderId === u.id && m.receiverId === user.id && m.read === false
-          );
-
-          const lastMessage = relevantMessages.length > 0 ? {
-            content: relevantMessages[0].content,
-            timestamp: relevantMessages[0].timestamp,
-            isUnread: hasUnreadMessages
-          } : undefined;
-
-          return {
-            ...u,
-            lastMessage
-          };
-        });
-
-        // Sort users: pinned first, then by last message time
-        const sortedUsers = usersWithLastMessage.sort((a, b) => {
-          // Pinned items (like SAGE) always first
-          if (a.isPinned && !b.isPinned) return -1;
-          if (!a.isPinned && b.isPinned) return 1;
-
-          // Then sort by last message time if available
-          if (a.lastMessage && b.lastMessage) {
-            return new Date(b.lastMessage.timestamp).getTime() -
-                   new Date(a.lastMessage.timestamp).getTime();
-          }
-
-          // If one has a message and other doesn't
-          if (a.lastMessage && !b.lastMessage) return -1;
-          if (!a.lastMessage && b.lastMessage) return 1;
-
-          // Default to alphabetical by name
-          return a.name.localeCompare(b.name);
-        });
-
-        setUsers(sortedUsers);
-
-        // Default select SAGE if no user is selected
-        if (!selectedUserId) {
-          const sage = sortedUsers.find(u => u.id === 'sage');
-          if (sage) {
-            setSelectedUserId(sage.id);
-            setSelectedUserName(sage.name);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading data:', error);
-      }
-    };
-
-    loadData();
-  }, [user, selectedUserId, messages]);
-
-  // Load messages from API if WebSocket is not available
-  const loadMessagesFromApi = async () => {
     try {
-      const response = await fetch('/api/messages');
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data);
+      const response = await fetch('/api/conversations', { cache: 'no-store' })
+      const payload = await parseJsonSafe<{ conversations?: ConversationSummary[]; detail?: string }>(response)
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Failed to load conversations')
       }
+
+      const nextConversations = payload?.conversations || []
+      setConversations(nextConversations)
+
+      if (!nextConversations.length) {
+        setSelectedConversationId('')
+        setMessages([])
+        return
+      }
+
+      const desiredId =
+        preferredConversationId && nextConversations.some((item) => item.id === preferredConversationId)
+          ? preferredConversationId
+          : selectedConversationIdRef.current && nextConversations.some((item) => item.id === selectedConversationIdRef.current)
+            ? selectedConversationIdRef.current
+            : nextConversations.find((item) => item.type === 'sage')?.id || nextConversations[0]?.id || ''
+
+      setSelectedConversationId(desiredId)
     } catch (error) {
-      console.error('Error loading messages from API:', error);
+      setPageError(error instanceof Error ? error.message : 'Failed to load conversations')
+    } finally {
+      setIsLoadingConversations(false)
     }
-  };
-
-  // Connect to WebSocket when component mounts
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Try to connect to WebSocket
-      connectWebSocket();
-
-      // Listen for connection status changes
-      const removeConnectionListener = addConnectionListener((connected) => {
-        setIsConnected(connected);
-
-        // If we couldn't connect to WebSocket, load messages from API
-        if (!connected) {
-          loadMessagesFromApi();
-        }
-      });
-
-      // Listen for messages from WebSocket
-      const removeMessageListener = addMessageListener((data) => {
-        if (data.type === 'INITIAL_MESSAGES') {
-          setMessages(data.payload);
-        } else if (data.type === 'MESSAGE_CREATED') {
-          // If we're currently viewing the conversation with this user,
-          // mark the message as read immediately
-          const newMessage = data.payload;
-
-          // Check if this message already exists in our state (to prevent duplicates)
-          const messageExists = messages.some(m => m.id === newMessage.id);
-          if (messageExists) {
-            // Skip adding this message as it's already in our state
-            return;
-          }
-
-          if (
-            user && // Make sure user is not null
-            newMessage.senderId !== user.id &&
-            newMessage.receiverId === user.id &&
-            selectedUserId === newMessage.senderId
-          ) {
-            // We're currently viewing this conversation, so mark as read
-            newMessage.read = true;
-
-            // Also update on the server
-            fetch('/api/messages/read', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                userId: user.id,
-                otherUserId: newMessage.senderId
-              }),
-            }).catch(err => console.error('Error marking message as read:', err));
-          }
-
-          setMessages(prev => [...prev, newMessage]);
-        }
-      });
-
-      // Set a timeout to check if WebSocket connected
-      const checkConnectionTimeout = setTimeout(() => {
-        if (!isConnected) {
-          console.log('WebSocket connection timeout, loading messages from API');
-          loadMessagesFromApi();
-        }
-      }, 3000); // Wait 3 seconds for WebSocket to connect
-
-      return () => {
-        removeConnectionListener();
-        removeMessageListener();
-        clearTimeout(checkConnectionTimeout);
-      };
-    }
-  }, [user, selectedUserId]); // Add dependencies
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    } else if (user) {
-      setCurrentUserId(user.id);
-    }
-  }, [user, loading, router]);
-
-  // One-time sync of local JSON users/messages into graph backend for this browser session.
-  useEffect(() => {
-    if (!user) return;
-    const syncKey = 'graph_sync_done';
-    if (sessionStorage.getItem(syncKey) === '1') return;
-
-    fetch('/api/messages/sync', { method: 'POST' })
-      .then((response) => response.json())
-      .then((result) => {
-        if (result?.success) {
-          sessionStorage.setItem(syncKey, '1');
-        }
-      })
-      .catch((error) => {
-        console.error('Initial graph sync failed:', error);
-      });
-  }, [user]);
-
-  // If still loading or not authenticated, show nothing
-  if (loading || !user) {
-    return null;
   }
 
-  const handleSelectUser = (userId: string, userName: string) => {
-    setSelectedUserId(userId);
-    setSelectedUserName(userName);
-
-    // Mark messages from this user as read when selecting the conversation
-    if (user) {
-      fetch('/api/messages/read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          otherUserId: userId
-        }),
-      })
-      .then(response => response.json())
-      .then(result => {
-        if (result.updatedCount > 0) {
-          // Update local state to reflect read status changes
-          setMessages(prev => prev.map(m => {
-            if (m.senderId === userId && m.receiverId === user.id && m.read === false) {
-              return { ...m, read: true };
-            }
-            return m;
-          }));
-        }
-      })
-      .catch(err => console.error('Error marking messages as read:', err));
+  const loadMessages = async (conversationId: string) => {
+    if (!conversationId) {
+      setMessages([])
+      return
     }
 
-    // On mobile, close the sheet after selecting a user
-    if (isMobile) {
-      const button = document.querySelector('.mobile-menu-close');
-      if (button instanceof HTMLButtonElement) {
-        button.click();
+    setIsLoadingMessages(true)
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, { cache: 'no-store' })
+      const payload = await parseJsonSafe<{ messages?: Message[]; detail?: string }>(response)
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Failed to load messages')
       }
+      setMessages(payload?.messages || [])
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Failed to load messages')
+    } finally {
+      setIsLoadingMessages(false)
     }
-  };
+  }
 
-  // Format the timestamp for display
-  const formatTime = (timestamp: string) => {
-    return format(new Date(timestamp), 'MMM d, h:mm a');
-  };
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login')
+    }
+  }, [loading, router, user])
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    loadConversations()
+  }, [user])
+
+  useEffect(() => {
+    if (!user || !selectedConversationId) {
+      return
+    }
+    loadMessages(selectedConversationId)
+  }, [selectedConversationId, user])
+
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') {
+      return
+    }
+
+    connectWebSocket()
+
+    const removeConnectionListener = addConnectionListener((connected) => {
+      setIsConnected(connected)
+    })
+
+    const removeMessageListener = addMessageListener((event) => {
+      const activeConversationId = selectedConversationIdRef.current
+      const shouldRefreshMessages = !event?.conversationId || event.conversationId === activeConversationId
+      void loadConversations(activeConversationId)
+      if (shouldRefreshMessages && activeConversationId) {
+        void loadMessages(activeConversationId)
+      }
+    })
+
+    return () => {
+      removeConnectionListener()
+      removeMessageListener()
+    }
+  }, [user])
+
+  if (loading || !user) {
+    return null
+  }
+
+  const selectedConversation = conversations.find((item) => item.id === selectedConversationId) || null
+
+  const filteredConversations = conversations.filter((conversation) => {
+    if (!contactSearch.trim()) {
+      return true
+    }
+
+    const query = contactSearch.toLowerCase()
+    return (
+      conversation.title.toLowerCase().includes(query) ||
+      conversation.id.toLowerCase().includes(query) ||
+      (conversation.otherUser?.email || '').toLowerCase().includes(query)
+    )
+  })
 
   const userList = (
     <div className="w-full h-full min-h-0 overflow-y-auto scrollbar-hidden bg-white dark:bg-gray-900">
       <div className="p-4 space-y-3">
-        <div className="font-semibold dark:text-white">Contacts</div>
+        <div className="font-semibold dark:text-white">Conversations</div>
         <Input
           value={contactSearch}
-          onChange={(e) => setContactSearch(e.target.value)}
-          placeholder="Search contacts..."
+          onChange={(event) => setContactSearch(event.target.value)}
+          placeholder="Search chats..."
           className="h-9"
         />
       </div>
       <Separator className="dark:bg-gray-700" />
       <div className="space-y-1">
-        {users
-          .filter((entry) => {
-            if (!contactSearch.trim()) return true;
-            const query = contactSearch.toLowerCase();
-            return (
-              entry.name.toLowerCase().includes(query) ||
-              entry.id.toLowerCase().includes(query) ||
-              (entry.email || '').toLowerCase().includes(query)
-            );
-          })
-          .map((user) => (
-          <div
-            key={user.id}
-            className={`p-3 rounded flex items-center gap-3 cursor-pointer
-              hover:bg-gray-50 dark:hover:bg-gray-800 ${
-              selectedUserId === user.id ? "bg-gray-50 dark:bg-gray-800" : ""
-            }`}
-            onClick={() => handleSelectUser(user.id, user.name)}
-          >
-            <div className="text-2xl relative">
-              {user.avatar || '👤'}
-              {user.lastMessage?.isUnread && (
-                <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-blue-600 rounded-full border-2 border-white dark:border-gray-900 animate-pulse"></div>
-              )}
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <div className="flex justify-between items-baseline">
-                <span className={`font-medium truncate ${user.lastMessage?.isUnread ? "font-semibold" : ""} dark:text-white`}>
-                  {user.name}
-                </span>
-                {user.lastMessage && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 ml-1">
-                    {formatTime(user.lastMessage.timestamp)}
-                  </span>
+        {filteredConversations.map((conversation) => {
+          const preview = conversation.lastMessage?.attachmentName || conversation.lastMessage?.content || ''
+          const isSelected = selectedConversationId === conversation.id
+          const badgeLabel =
+            conversation.type === 'group'
+              ? 'Group'
+              : conversation.type === 'sage'
+                ? 'SAGE'
+                : 'Direct'
+
+          return (
+            <div
+              key={conversation.id}
+              className={`p-3 rounded flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                isSelected ? 'bg-gray-50 dark:bg-gray-800' : ''
+              }`}
+              onClick={() => {
+                setSelectedConversationId(conversation.id)
+                if (isMobile) {
+                  const button = document.querySelector('.mobile-menu-close')
+                  if (button instanceof HTMLButtonElement) {
+                    button.click()
+                  }
+                }
+              }}
+            >
+              <div className="text-2xl relative">
+                {conversation.avatar || conversation.title.charAt(0).toUpperCase()}
+                {conversation.unreadCount > 0 && (
+                  <div className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-blue-600 rounded-full border-2 border-white dark:border-gray-900 text-[10px] leading-none flex items-center justify-center text-white">
+                    {conversation.unreadCount}
+                  </div>
                 )}
               </div>
-              {user.lastMessage && (
-                <p className={`text-sm truncate ${
-                  user.lastMessage.isUnread
-                    ? "text-gray-900 font-medium dark:text-gray-200"
-                    : "text-gray-600 dark:text-gray-400"
-                }`}>
-                  {user.lastMessage.content}
-                </p>
-              )}
+              <div className="flex-1 overflow-hidden">
+                <div className="flex justify-between items-baseline gap-2">
+                  <span className={`font-medium truncate ${conversation.unreadCount > 0 ? 'font-semibold' : ''} dark:text-white`}>
+                    {conversation.title}
+                  </span>
+                  {conversation.lastMessage?.sentAt && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                      {format(new Date(conversation.lastMessage.sentAt), 'MMM d, h:mm a')}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {badgeLabel}
+                  </span>
+                  {preview && (
+                    <p
+                      className={`text-sm truncate ${
+                        conversation.unreadCount > 0
+                          ? 'text-gray-900 font-medium dark:text-gray-200'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                    >
+                      {preview}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
+          )
+        })}
+        {!filteredConversations.length && !isLoadingConversations && (
+          <div className="px-4 py-8 text-sm text-gray-500 dark:text-gray-400">
+            No conversations matched your search.
           </div>
-        ))}
+        )}
       </div>
     </div>
-  );
+  )
 
   return (
     <div className="flex h-full min-h-0 chat-page-container">
-      {/* Mobile: Sidebar in a Sheet */}
       {isMobile ? (
         <div className="fixed top-0 left-0 z-10 p-4">
           <Sheet>
@@ -346,64 +262,62 @@ export default function ChatPage() {
                 <Menu className="h-6 w-6" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[250px] sm:w-[300px] p-0 overflow-hidden">
+            <SheetContent side="left" className="w-[250px] sm:w-[320px] p-0 overflow-hidden">
               {userList}
               <button className="hidden mobile-menu-close">close</button>
             </SheetContent>
           </Sheet>
         </div>
       ) : (
-        /* Desktop: Sidebar always visible */
         <div className="w-[320px] border-r h-full min-h-0 overflow-hidden bg-white dark:border-gray-700">
           {userList}
         </div>
       )}
 
-      {/* Chat window */}
-      <div className={`${isMobile ? "w-full" : "flex-1"} h-full min-h-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900 relative`}>
-        {/* Connection status indicator */}
-        <div className={`absolute top-2 right-2 flex items-center gap-2 px-3 py-1 rounded-full text-xs transition-opacity ${isConnected ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'} ${isConnected ? 'opacity-0 hover:opacity-100' : 'opacity-100'}`}>
-          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          {isConnected ? 'Connected' : 'Disconnected'}
+      <div className={`${isMobile ? 'w-full' : 'flex-1'} h-full min-h-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900 relative`}>
+        <div
+          aria-label={isConnected ? 'Live updates connected' : 'Live updates disconnected'}
+          title={
+            isConnected
+              ? 'Realtime notifications are connected.'
+              : 'Realtime notifications are disconnected. Messages still send over the API, but new updates will not appear instantly.'
+          }
+          className={`absolute top-2 right-2 flex items-center gap-2 px-3 py-1 rounded-full text-xs transition-opacity ${
+            isConnected
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 opacity-0 hover:opacity-100'
+              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 opacity-100'
+          }`}
+        >
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          {isConnected ? 'Live Updates On' : 'Live Updates Off'}
           {!isConnected && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-2 h-6 px-2 text-xs"
-              onClick={() => {
-                // Log reconnection attempt
-                console.log('Manual reconnection requested by user');
-
-                // Call manualReconnect and then force a state update
-                const result = manualReconnect();
-                console.log('Manual reconnect result:', result);
-
-                // Force a small delay before updating the UI
-                setTimeout(() => {
-                  // This will trigger a re-render
-                  setIsConnected(false);
-                  console.log('UI state updated, isConnected set to false');
-                }, 200);
-              }}
-            >
-              Reconnect
+            <Button variant="ghost" size="sm" className="ml-2 h-6 px-2 text-xs" onClick={() => manualReconnect()}>
+              Retry
             </Button>
           )}
         </div>
-        {selectedUserId ? (
+
+        {pageError && (
+          <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+            {pageError}
+          </div>
+        )}
+
+        {selectedConversation ? (
           <ChatWindow
-            currentUserId={currentUserId}
-            otherUserId={selectedUserId}
-            otherUserName={selectedUserName}
-            allMessages={messages}
-            setAllMessages={setMessages}
+            currentUserId={user.id}
+            conversation={selectedConversation}
+            messages={messages}
+            isLoadingMessages={isLoadingMessages}
+            onRefreshMessages={() => loadMessages(selectedConversation.id)}
+            onRefreshConversations={() => loadConversations(selectedConversation.id)}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
-            Select a contact to start chatting
+            {isLoadingConversations ? 'Loading conversations...' : 'Select a conversation to start chatting'}
           </div>
         )}
       </div>
     </div>
-  );
+  )
 }

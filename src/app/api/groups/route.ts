@@ -1,29 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
 import { backendFetchJson, BackendProxyError } from '@/lib/server/backend'
 import { getSessionUserId } from '@/lib/server/session'
+import { Group } from '@/types'
 
-export async function POST(request: NextRequest) {
+export async function GET() {
   try {
     const userId = await getSessionUserId()
     if (!userId) {
       return NextResponse.json({ detail: 'Authentication required' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const data = await backendFetchJson('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...body,
-        user_id: userId,
-      }),
-    })
+    const data = await backendFetchJson<{ groups: Group[] }>('/api/groups', { userId })
     return NextResponse.json(data)
   } catch (error) {
     if (error instanceof BackendProxyError) {
       return NextResponse.json(error.detail, { status: error.status })
     }
-    return NextResponse.json({ detail: 'Failed to process chat request' }, { status: 500 })
+    return NextResponse.json({ detail: 'Failed to load groups' }, { status: 500 })
   }
 }
