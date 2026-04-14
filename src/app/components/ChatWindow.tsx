@@ -6,15 +6,19 @@ import { FileText, Info, Paperclip, Send, Users, X } from 'lucide-react'
 
 import MessageTraceSheet from '@/app/components/MessageTraceSheet'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { ConversationSummary, FileAttachment, Message } from '@/types'
+import { ConversationSummary, FileAttachment, Message, User } from '@/types'
 
 type Props = {
   currentUserId: string
+  currentUser: User
   conversation: ConversationSummary
   messages: Message[]
   isLoadingMessages: boolean
+  isConnected: boolean
+  onReconnect: () => void
   onRefreshMessages: () => Promise<void>
   onRefreshConversations: () => Promise<void>
 }
@@ -22,6 +26,13 @@ type Props = {
 type CreateMessageResponse = {
   message: Message
   notifyUserIds: string[]
+}
+
+type GroupMember = {
+  id: string
+  name: string
+  avatar?: string
+  isCurrentUser: boolean
 }
 
 async function parseJsonSafe<T>(response: Response): Promise<T | null> {
@@ -34,9 +45,12 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
 
 export default function ChatWindow({
   currentUserId,
+  currentUser,
   conversation,
   messages,
   isLoadingMessages,
+  isConnected,
+  onReconnect,
   onRefreshMessages,
   onRefreshConversations,
 }: Props) {
@@ -52,6 +66,7 @@ export default function ChatWindow({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const markedReadForConversationRef = useRef<string>('')
+  const isSageConversation = conversation.type === 'sage'
 
   useEffect(() => {
     markedReadForConversationRef.current = ''
@@ -189,22 +204,25 @@ export default function ChatWindow({
   }
 
   const sendSageReply = async (payload: {
-    content: string
+    content?: string
+    answerPayload?: Message['answerPayload']
     trace?: Message['trace']
     thinking?: string[]
     syncToGraph?: boolean
   }) => {
+    const content = payload.answerPayload?.summary || payload.content || ''
     await createConversationMessage({
       senderId: 'sage',
       receiverId: currentUserId,
-      content: payload.content,
+      content,
       sentAt: new Date().toISOString(),
       source: 'sage_response',
       trace: payload.trace,
       thinking: payload.thinking || [],
+      answerPayload: payload.answerPayload,
       role: 'assistant',
       isAiResponse: true,
-      syncToGraph: payload.syncToGraph ?? true,
+      syncToGraph: payload.syncToGraph ?? false,
     })
   }
 
@@ -238,7 +256,7 @@ export default function ChatWindow({
         attachment,
         role: 'user',
         isAiResponse: false,
-        syncToGraph: !attachmentOnlyMessage,
+        syncToGraph: !isSageConversation && !attachmentOnlyMessage,
       })
 
       setNewMessage('')
@@ -253,7 +271,7 @@ export default function ChatWindow({
           const message = error instanceof Error ? error.message : 'Failed to process attachment'
           setUploadError(message)
 
-          if (conversation.type === 'sage' && attachmentOnlyMessage) {
+          if (isSageConversation && attachmentOnlyMessage) {
             await sendSageReply({
               content: `I saved "${attachment.name}", but I couldn't process its contents yet. ${message}`,
               syncToGraph: false,
@@ -266,7 +284,7 @@ export default function ChatWindow({
         }
       }
 
-      if (conversation.type !== 'sage') {
+      if (!isSageConversation) {
         return
       }
 
@@ -292,13 +310,21 @@ export default function ChatWindow({
           history,
         }),
       })
-      const payload = await parseJsonSafe<{ answer?: string; thinking?: string[]; trace?: Message['trace']; detail?: string }>(response)
-      if (!response.ok || !payload?.answer) {
+      const payload = await parseJsonSafe<{
+        answer?: string
+        answer_payload?: Message['answerPayload']
+        thinking?: string[]
+        trace?: Message['trace']
+        detail?: string
+      }>(response)
+      const answerSummary = payload?.answer_payload?.summary || payload?.answer
+      if (!response.ok || !answerSummary || !payload?.answer_payload) {
         throw new Error(payload?.detail || 'Failed to get SAGE response')
       }
 
       await sendSageReply({
-        content: payload.answer,
+        content: answerSummary,
+        answerPayload: payload.answer_payload,
         trace: payload.trace,
         thinking: payload.thinking || [],
       })
@@ -307,7 +333,7 @@ export default function ChatWindow({
       const message = error instanceof Error ? error.message : 'Failed to send message'
       setUploadError(message)
 
-      if (conversation.type === 'sage') {
+      if (isSageConversation) {
         try {
           await sendSageReply({
             content: `Sorry, I ran into an error while processing that request. ${message}`,
@@ -332,6 +358,23 @@ export default function ChatWindow({
   }
 
   const formatMessageTime = (sentAt: string) => format(new Date(sentAt), 'h:mm a')
+  const participantDetails: Array<{ id: string; name: string; avatar?: string }> =
+    conversation.participants && conversation.participants.length > 0
+      ? conversation.participants.map((member) => ({
+          id: member.id,
+          name: member.name,
+          avatar: member.avatar,
+        }))
+      : conversation.participantIds.map((id) => ({ id, name: `User ${id}` }))
+  const groupMembers: GroupMember[] =
+    conversation.type === 'group'
+      ? [
+          { id: currentUserId, name: currentUser.name, avatar: currentUser.avatar, isCurrentUser: true },
+          ...participantDetails
+            .filter((member) => member.id !== currentUserId)
+            .map((member) => ({ ...member, isCurrentUser: false })),
+        ]
+      : []
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -343,12 +386,58 @@ export default function ChatWindow({
               {conversation.type === 'group' ? 'Group conversation' : conversation.type === 'sage' ? 'SAGE assistant' : 'Direct conversation'}
             </div>
           </div>
-          {conversation.type === 'group' && (
-            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-              <Users className="h-3.5 w-3.5" />
-              {conversation.participantIds.length + 1} members
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div
+              aria-label={isConnected ? 'Live updates connected' : 'Live updates disconnected'}
+              title={
+                isConnected
+                  ? 'Realtime notifications are connected.'
+                  : 'Realtime notifications are disconnected. Messages still send over the API, but new updates will not appear instantly.'
+              }
+              className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs transition-opacity ${
+                isConnected
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 opacity-80 hover:opacity-100'
+                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 opacity-100'
+              }`}
+            >
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              {isConnected ? 'Live Updates On' : 'Live Updates Off'}
+              {!isConnected && (
+                <Button variant="ghost" size="sm" className="ml-2 h-6 px-2 text-xs" onClick={() => onReconnect()}>
+                  Retry
+                </Button>
+              )}
             </div>
-          )}
+            {conversation.type === 'group' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-gray-500 dark:text-gray-300">
+                    <Users className="h-3.5 w-3.5 mr-1" />
+                    {conversation.participantIds.length + 1} members
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64 p-2">
+                  <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Group members
+                  </div>
+                  <div className="max-h-64 overflow-auto">
+                    {groupMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200"
+                      >
+                        <div className="text-base">{member.avatar || member.name.charAt(0)}</div>
+                        <div className="flex-1">
+                          <div className="text-sm">{member.name}</div>
+                          {member.isCurrentUser && <div className="text-xs text-gray-400">You</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
       </div>
 
@@ -360,8 +449,13 @@ export default function ChatWindow({
 
           {messages.map((message) => {
             const isOwn = message.senderId === currentUserId
-            const showTraceButton = message.senderId === 'sage' && message.isAiResponse
+            const showTraceButton =
+              Boolean(message.senderId === 'sage' && message.isAiResponse) ||
+              Boolean(message.source === 'chat_message' || message.source === 'chat_attachment' || message.attachment)
             const graphSyncFailed = message.graphSyncStatus === 'failed'
+            const insightLabel = message.senderId === 'sage' && message.isAiResponse ? 'Answer insight' : 'Message insight'
+            const displaySummary = message.answerPayload?.summary || message.content
+            const displayBullets = message.answerPayload?.bullets || []
 
             return (
               <div key={message.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
@@ -373,7 +467,16 @@ export default function ChatWindow({
                         : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600'
                     }`}
                   >
-                    <div>{message.content}</div>
+                    {/* TODO(agentic): Future planner-driven responses should still render through answerPayload so the chat bubble stays decoupled from backend execution flow. */}
+                    <div className="whitespace-pre-wrap">{displaySummary}</div>
+
+                    {displayBullets.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                        {displayBullets.map((bullet, index) => (
+                          <li key={`${message.id}-bullet-${index}`}>{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
 
                     {message.attachment?.url && (
                       <div className="mt-2">
@@ -399,19 +502,6 @@ export default function ChatWindow({
                     )}
                   </div>
 
-                  {message.thinking && message.thinking.length > 0 && message.senderId === 'sage' && (
-                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      <details>
-                        <summary className="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">
-                          Show thinking process
-                        </summary>
-                        <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded border text-xs font-mono whitespace-pre-wrap">
-                          {message.thinking.join('\n')}
-                        </div>
-                      </details>
-                    </div>
-                  )}
-
                   {graphSyncFailed && (
                     <div className="mt-1 text-xs text-red-500 dark:text-red-300">
                       Graph sync failed for this message.
@@ -435,13 +525,13 @@ export default function ChatWindow({
                                 setTraceMessage(message)
                                 setIsTraceOpen(true)
                               }}
-                              aria-label="Open answer insight"
+                              aria-label={`Open ${insightLabel.toLowerCase()}`}
                             >
                               <Info className="h-3.5 w-3.5" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Answer insight</p>
+                            <p>{insightLabel}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

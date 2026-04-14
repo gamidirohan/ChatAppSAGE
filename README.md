@@ -67,8 +67,8 @@ NEXT_PUBLIC_FASTAPI_URL=http://localhost:8000  # URL of your FastAPI backend
 The application communicates with a FastAPI backend that provides:
 
 1. **Chat API** - `/api/chat` endpoint for AI-powered conversations
-2. **Document Processing** - `/api/process_document` endpoint for document analysis
-3. **Graph Debugging** - `/api/debug_graph` endpoint for inspecting the knowledge graph
+2. **Document Processing** - `/api/process-document` endpoint for document analysis
+3. **Graph Debugging** - `/api/debug-graph` endpoint for inspecting the knowledge graph
 4. **Health Checks** - `/api/health` endpoint for monitoring backend status
 
 
@@ -79,6 +79,7 @@ The application communicates with a FastAPI backend that provides:
 - **AI Assistant (SAGE)** - Intelligent chat with the SAGE AI assistant
 - **Document Upload** - Support for PDF and TXT document uploads
 - **Knowledge Graph** - Backend integration with a graph-based RAG system
+- **Message Insight Sheet** - Inspect answer provenance plus SAIA claims, canonical facts, and replacements for chat messages and attachments
 - **Dark Mode** - Toggle between light and dark themes
 - **Responsive Design** - Works on desktop and mobile devices
 
@@ -121,3 +122,19 @@ The application communicates with a FastAPI backend that provides:
 │   └── types/            # TypeScript type definitions
 └── tailwind.config.ts    # Tailwind CSS configuration
 ```
+
+## Validation
+
+Use the smallest relevant frontend validation path:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+node --check websocket-server.js
+```
+
+Notes:
+- `npm run lint` uses ESLint when `eslint` and `eslint-config-next` are installed.
+- In offline environments where those packages are unavailable, `npm run lint` falls back to Next.js build and type validation so the repo still has a working validation path.
+- `npm run lint:eslint` is available if you want the strict ESLint path explicitly.

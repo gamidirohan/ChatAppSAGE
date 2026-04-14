@@ -274,28 +274,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      <div className={`${isMobile ? 'w-full' : 'flex-1'} h-full min-h-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900 relative`}>
-        <div
-          aria-label={isConnected ? 'Live updates connected' : 'Live updates disconnected'}
-          title={
-            isConnected
-              ? 'Realtime notifications are connected.'
-              : 'Realtime notifications are disconnected. Messages still send over the API, but new updates will not appear instantly.'
-          }
-          className={`absolute top-2 right-2 flex items-center gap-2 px-3 py-1 rounded-full text-xs transition-opacity ${
-            isConnected
-              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 opacity-0 hover:opacity-100'
-              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 opacity-100'
-          }`}
-        >
-          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          {isConnected ? 'Live Updates On' : 'Live Updates Off'}
-          {!isConnected && (
-            <Button variant="ghost" size="sm" className="ml-2 h-6 px-2 text-xs" onClick={() => manualReconnect()}>
-              Retry
-            </Button>
-          )}
-        </div>
+      <div className={`${isMobile ? 'w-full' : 'flex-1'} h-full min-h-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900`}>
 
         {pageError && (
           <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
@@ -306,9 +285,12 @@ export default function ChatPage() {
         {selectedConversation ? (
           <ChatWindow
             currentUserId={user.id}
+            currentUser={user}
             conversation={selectedConversation}
             messages={messages}
             isLoadingMessages={isLoadingMessages}
+            isConnected={isConnected}
+            onReconnect={manualReconnect}
             onRefreshMessages={() => loadMessages(selectedConversation.id)}
             onRefreshConversations={() => loadConversations(selectedConversation.id)}
           />

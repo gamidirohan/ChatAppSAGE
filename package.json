@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "node scripts/run-lint.mjs",
+    "lint:eslint": "next lint",
+    "lint:types": "npx tsc --noEmit",
     "websocket": "node websocket-server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run websocket\""
   },

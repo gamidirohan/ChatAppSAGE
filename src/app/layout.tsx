@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 import Navbar from '@/components/Navbar'
 import { AuthProvider } from '@/context/AuthContext'
@@ -8,7 +8,11 @@ import { ThemeProvider } from '@/context/ThemeContext'
 // Ensure uploads directory exists
 import '@/app/api/ensure-uploads-dir'
 
-const inter = Inter({ subsets: ['latin'] })
+const appFont = localFont({
+  src: './fonts/NotoSans-Regular.ttf',
+  display: 'swap',
+  fallback: ['system-ui', 'sans-serif'],
+})
 
 export const metadata: Metadata = {
   title: 'SAGE',
@@ -22,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} flex h-screen flex-col overflow-hidden bg-background text-foreground transition-colors`}>
+      <body className={`${appFont.className} flex h-screen flex-col overflow-hidden bg-background text-foreground transition-colors`}>
         <AuthProvider>
           <ThemeProvider>
             <Navbar className="flex-shrink-0" />
