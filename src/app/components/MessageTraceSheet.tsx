@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Message, MessageSAIAInsight, SAIAClaim, SAIAGroundingReference } from '@/types'
+import GraphGlobalSnapshotFlow, { type GraphRetrievalPathResponse, type GraphSubgraphResponse } from '@/app/components/GraphGlobalSnapshotFlow'
 
 type GraphCount = {
   label: string
@@ -127,6 +129,16 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
     setIsLoadingSaia(false)
   }, [message?.id])
 
+  const [selectedRank, setSelectedRank] = useState<'1' | '2' | '3'>('1')
+
+  const [topPath, setTopPath] = useState<GraphRetrievalPathResponse | null>(null)
+  const [topPathError, setTopPathError] = useState<string | null>(null)
+  const [isLoadingTopPath, setIsLoadingTopPath] = useState(false)
+
+  const [topGraph, setTopGraph] = useState<GraphSubgraphResponse | null>(null)
+  const [topGraphError, setTopGraphError] = useState<string | null>(null)
+  const [isLoadingTopGraph, setIsLoadingTopGraph] = useState(false)
+
   useEffect(() => {
     if (!open || graphSnapshot || isLoadingGraph) {
       return
@@ -209,6 +221,123 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
   const answerPayload = message?.answerPayload
   const trace = message?.trace
   const evidence = trace?.evidence ?? []
+
+  const rankIndex = Number(selectedRank) - 1
+  const topEvidence = evidence[rankIndex]
+  const rankLabel = `Top-${selectedRank}`
+
+  const hasTop1 = evidence.length >= 1
+  const hasTop2 = evidence.length >= 2
+  const hasTop3 = evidence.length >= 3
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const chunkId = topEvidence?.chunk_id
+    if (!chunkId) {
+      setTopPath(null)
+      setTopPathError(null)
+      setIsLoadingTopPath(false)
+      return
+    }
+
+    const controller = new AbortController()
+
+    const loadTopPath = async () => {
+      setIsLoadingTopPath(true)
+      setTopPathError(null)
+      setTopPath(null)
+
+      try {
+        const params = new URLSearchParams({ chunk_id: chunkId })
+        if (trace?.user_scoped && trace.user_id) {
+          params.set('user_id', String(trace.user_id))
+        }
+        if (topEvidence?.relationship) {
+          params.set('relationship', topEvidence.relationship)
+        }
+        if (topEvidence?.related_node?.id) {
+          params.set('related_node_id', String(topEvidence.related_node.id))
+        }
+
+        const response = await fetch(`/api/debug-retrieval-path?${params.toString()}`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          throw new Error(`Failed to load ${rankLabel} path (${response.status})`)
+        }
+
+        const payload = (await response.json()) as GraphRetrievalPathResponse
+        setTopPath(payload)
+      } catch (error) {
+        if ((error as { name?: string } | null)?.name !== 'AbortError') {
+          setTopPathError(error instanceof Error ? error.message : `Failed to load ${rankLabel} path`)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingTopPath(false)
+        }
+      }
+    }
+
+    loadTopPath()
+
+    return () => {
+      controller.abort()
+    }
+    // message?.id ensures we refresh when a different answer is inspected.
+  }, [open, message?.id, selectedRank, topEvidence?.chunk_id, topEvidence?.relationship, topEvidence?.related_node?.id, trace?.user_scoped, trace?.user_id])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const chunkId = topEvidence?.chunk_id
+    if (!chunkId) {
+      setTopGraph(null)
+      setTopGraphError(null)
+      setIsLoadingTopGraph(false)
+      return
+    }
+
+    const controller = new AbortController()
+
+    const loadTopGraph = async () => {
+      setIsLoadingTopGraph(true)
+      setTopGraphError(null)
+      setTopGraph(null)
+
+      try {
+        const params = new URLSearchParams({ chunk_id: chunkId, depth: '2' })
+        const response = await fetch(`/api/debug-subgraph?${params.toString()}`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          throw new Error(`Failed to load ${rankLabel} subgraph (${response.status})`)
+        }
+
+        const payload = (await response.json()) as GraphSubgraphResponse
+        setTopGraph(payload)
+      } catch (error) {
+        if ((error as { name?: string } | null)?.name !== 'AbortError') {
+          setTopGraphError(error instanceof Error ? error.message : `Failed to load ${rankLabel} subgraph`)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingTopGraph(false)
+        }
+      }
+    }
+
+    loadTopGraph()
+
+    return () => {
+      controller.abort()
+    }
+  }, [open, message?.id, selectedRank, topEvidence?.chunk_id])
   const claims = saiaInsight?.claims ?? []
   const previewClaims = saiaInsight?.preview_claims ?? []
   const groundedClaims = claims.length > 0 ? claims : previewClaims
@@ -745,6 +874,62 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {rankLabel} retrieval path (Neo4j)
+                  </div>
+
+                  <Tabs value={selectedRank} onValueChange={(value) => setSelectedRank(value as '1' | '2' | '3')}>
+                    <TabsList className="h-9">
+                      <TabsTrigger value="1" className="text-xs" disabled={!hasTop1}>
+                        Top-1
+                      </TabsTrigger>
+                      <TabsTrigger value="2" className="text-xs" disabled={!hasTop2}>
+                        Top-2
+                      </TabsTrigger>
+                      <TabsTrigger value="3" className="text-xs" disabled={!hasTop3}>
+                        Top-3
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
+                  {isLoadingTopGraph && (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      Loading {rankLabel} subgraph...
+                    </div>
+                  )}
+                  {topGraphError && (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-red-500">
+                      {topGraphError}
+                    </div>
+                  )}
+
+                  {isLoadingTopPath && (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      Loading {rankLabel} hop path...
+                    </div>
+                  )}
+                  {topPathError && (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-red-500">
+                      {topPathError}
+                    </div>
+                  )}
+
+                  {topPath && (
+                    <div className="text-xs text-muted-foreground">
+                      Hop count: <span className="font-medium text-foreground">{topPath.hop_count}</span>
+                    </div>
+                  )}
+
+                  {topGraph ? (
+                    <GraphGlobalSnapshotFlow trace={null} graph={topGraph} path={topPath} />
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      No Neo4j subgraph available for the {rankLabel} result.
+                    </div>
+                  )}
+                </div>
               </section>
             </div>
           </ScrollArea>
