@@ -13,6 +13,7 @@ export interface ChatTraceEvidence {
   chunk_id?: string
   chunk_summary?: string
   similarity?: number
+  rank_score?: number
   relationship?: string
   retrieval_path?: string
   hop_count?: number

@@ -369,7 +369,7 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
     return { nodes: builtNodes, edges: builtEdges }
   }, [graph, path, trace])
 
-  if (!trace && !path) {
+  if (!trace && !path && !graph) {
     return (
       <div className={className ?? ''}>
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -379,7 +379,7 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
     )
   }
 
-  if (nodes.length <= 1) {
+  if (nodes.length === 0 || (nodes.length <= 1 && !graph && !path)) {
     return (
       <div className={className ?? ''}>
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">

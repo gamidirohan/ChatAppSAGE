@@ -1,16 +1,20 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 import { backendFetchJson, BackendProxyError } from '@/lib/server/backend'
 import { getSessionUserId } from '@/lib/server/session'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const userId = await getSessionUserId()
     if (!userId) {
       return NextResponse.json({ detail: 'Authentication required' }, { status: 401 })
     }
 
-    const data = await backendFetchJson('/api/debug-graph')
+    const search = request.nextUrl.search
+    const data = await backendFetchJson(`/api/debug-graph${search}`, {
+      skipBootstrap: true,
+      timeoutMs: 10000,
+    })
     return NextResponse.json(data)
   } catch (error) {
     if (error instanceof BackendProxyError) {

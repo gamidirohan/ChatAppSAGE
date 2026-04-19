@@ -7,6 +7,7 @@ const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000'
 type BackendFetchOptions = RequestInit & {
   userId?: string
   skipBootstrap?: boolean
+  timeoutMs?: number
 }
 
 type BootstrapGlobal = typeof globalThis & {
@@ -72,7 +73,7 @@ export async function ensureBackendBootstrap() {
 }
 
 export async function backendFetch(path: string, options: BackendFetchOptions = {}) {
-  const { userId, skipBootstrap, headers, ...rest } = options
+  const { userId, skipBootstrap, timeoutMs, headers, ...rest } = options
   if (!skipBootstrap) {
     await ensureBackendBootstrap()
   }
@@ -82,17 +83,35 @@ export async function backendFetch(path: string, options: BackendFetchOptions = 
     requestHeaders.set('x-user-id', userId)
   }
 
-  const response = await fetch(`${FASTAPI_URL}${path}`, {
-    ...rest,
-    headers: requestHeaders,
-    cache: 'no-store',
-  })
+  const controller = new AbortController()
+  const timeoutId =
+    typeof timeoutMs === 'number' && timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null
 
-  if (!response.ok) {
-    throw new BackendProxyError(response.status, await parseBackendError(response))
+  try {
+    const response = await fetch(`${FASTAPI_URL}${path}`, {
+      ...rest,
+      headers: requestHeaders,
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new BackendProxyError(response.status, await parseBackendError(response))
+    }
+
+    return response
+  } catch (error) {
+    if ((error as { name?: string } | null)?.name === 'AbortError') {
+      throw new BackendProxyError(504, { detail: 'Backend request timed out' })
+    }
+    throw error
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
   }
-
-  return response
 }
 
 export async function backendFetchJson<T>(path: string, options: BackendFetchOptions = {}): Promise<T> {

@@ -116,6 +116,12 @@ function formatReferenceTranslation(reference: SAIAGroundingReference | null) {
 }
 
 export default function MessageTraceSheet({ message, open, onOpenChange }: Props) {
+  const isAnswerMessage = Boolean(message?.senderId === 'sage' && message?.isAiResponse)
+  const answerPayload = message?.answerPayload
+  const trace = message?.trace
+  const evidence = trace?.evidence ?? []
+  const shouldSkipSaiaFetch = Boolean(isAnswerMessage && message?.source === 'sage_response')
+
   const [graphSnapshot, setGraphSnapshot] = useState<GraphSnapshot | null>(null)
   const [graphError, setGraphError] = useState<string | null>(null)
   const [isLoadingGraph, setIsLoadingGraph] = useState(false)
@@ -140,20 +146,28 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
   const [isLoadingTopGraph, setIsLoadingTopGraph] = useState(false)
 
   useEffect(() => {
-    if (!open || graphSnapshot || isLoadingGraph) {
+    if (!open || graphSnapshot) {
       return
     }
 
     let cancelled = false
+    const controller = new AbortController()
+    let timeoutId: number | null = null
 
     const loadGraphSnapshot = async () => {
       setIsLoadingGraph(true)
       setGraphError(null)
+      let timedOut = false
+      timeoutId = window.setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, 12000)
 
       try {
-        const response = await fetch('/api/debug-graph')
+        const response = await fetch('/api/debug-graph?summary_only=1', { signal: controller.signal, cache: 'no-store' })
         if (!response.ok) {
-          throw new Error(`Failed to load graph snapshot (${response.status})`)
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.detail || `Failed to load graph snapshot (${response.status})`)
         }
 
         const payload = await response.json()
@@ -162,9 +176,16 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
         }
       } catch (error) {
         if (!cancelled) {
-          setGraphError(error instanceof Error ? error.message : 'Failed to load graph snapshot')
+          if ((error as { name?: string } | null)?.name === 'AbortError' && timedOut) {
+            setGraphError('Timed out loading graph snapshot. Check whether the backend and Neo4j are responding.')
+          } else {
+            setGraphError(error instanceof Error ? error.message : 'Failed to load graph snapshot')
+          }
         }
       } finally {
+        if (timeoutId !== null) {
+          window.clearTimeout(timeoutId)
+        }
         if (!cancelled) {
           setIsLoadingGraph(false)
         }
@@ -175,11 +196,41 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
 
     return () => {
       cancelled = true
+      controller.abort()
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
     }
-  }, [graphSnapshot, isLoadingGraph, open])
+  }, [graphSnapshot, open])
 
   useEffect(() => {
     if (!open || !message?.id) {
+      return
+    }
+
+    if (shouldSkipSaiaFetch) {
+      setSaiaError(null)
+      setIsLoadingSaia(false)
+      setSaiaInsight({
+        message_id: message.id,
+        message_source: message.source,
+        saia_status: 'not_applicable',
+        saia_error: 'SAGE assistant replies are not SAIA-processed or graph-synced. Review the retrieval provenance below instead.',
+        source_documents: [],
+        runs: [],
+        claims: [],
+        preview_claims: [],
+        canonical_facts: [],
+        replacements: [],
+        summary: {
+          document_count: 0,
+          run_count: 0,
+          claim_count: 0,
+          preview_claim_count: 0,
+          canonical_fact_count: 0,
+          replacement_count: 0,
+        },
+      })
       return
     }
 
@@ -188,9 +239,18 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
     const loadSaiaInsight = async () => {
       setIsLoadingSaia(true)
       setSaiaError(null)
+      let timedOut = false
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, 12000)
 
       try {
-        const response = await fetch(`/api/messages/${message.id}/saia`, { cache: 'no-store' })
+        const response = await fetch(`/api/messages/${message.id}/saia`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
         if (!response.ok) {
           const payload = await response.json().catch(() => null)
           throw new Error(payload?.detail || `Failed to load SAIA insight (${response.status})`)
@@ -201,9 +261,14 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
         }
       } catch (error) {
         if (!cancelled) {
-          setSaiaError(error instanceof Error ? error.message : 'Failed to load SAIA insight')
+          if ((error as { name?: string } | null)?.name === 'AbortError' && timedOut) {
+            setSaiaError('Timed out loading SAIA insight. Check whether the backend and Neo4j are responding.')
+          } else {
+            setSaiaError(error instanceof Error ? error.message : 'Failed to load SAIA insight')
+          }
         }
       } finally {
+        window.clearTimeout(timeoutId)
         if (!cancelled) {
           setIsLoadingSaia(false)
         }
@@ -215,12 +280,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
     return () => {
       cancelled = true
     }
-  }, [message?.id, open])
-
-  const isAnswerMessage = Boolean(message?.senderId === 'sage' && message?.isAiResponse)
-  const answerPayload = message?.answerPayload
-  const trace = message?.trace
-  const evidence = trace?.evidence ?? []
+  }, [message?.id, message?.source, open, shouldSkipSaiaFetch])
 
   const rankIndex = Number(selectedRank) - 1
   const topEvidence = evidence[rankIndex]
@@ -249,6 +309,11 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
       setIsLoadingTopPath(true)
       setTopPathError(null)
       setTopPath(null)
+      let timedOut = false
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, 12000)
 
       try {
         const params = new URLSearchParams({ chunk_id: chunkId })
@@ -274,9 +339,14 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
       } catch (error) {
         if ((error as { name?: string } | null)?.name !== 'AbortError') {
           setTopPathError(error instanceof Error ? error.message : `Failed to load ${rankLabel} path`)
+        } else if (timedOut) {
+          setTopPathError(`Timed out loading ${rankLabel} path.`)
         }
       } finally {
+        window.clearTimeout(timeoutId)
         if (!controller.signal.aborted) {
+          setIsLoadingTopPath(false)
+        } else if (timedOut) {
           setIsLoadingTopPath(false)
         }
       }
@@ -309,6 +379,11 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
       setIsLoadingTopGraph(true)
       setTopGraphError(null)
       setTopGraph(null)
+      let timedOut = false
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, 12000)
 
       try {
         const params = new URLSearchParams({ chunk_id: chunkId, depth: '2' })
@@ -324,9 +399,14 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
       } catch (error) {
         if ((error as { name?: string } | null)?.name !== 'AbortError') {
           setTopGraphError(error instanceof Error ? error.message : `Failed to load ${rankLabel} subgraph`)
+        } else if (timedOut) {
+          setTopGraphError(`Timed out loading ${rankLabel} subgraph.`)
         }
       } finally {
+        window.clearTimeout(timeoutId)
         if (!controller.signal.aborted) {
+          setIsLoadingTopGraph(false)
+        } else if (timedOut) {
           setIsLoadingTopGraph(false)
         }
       }
@@ -345,6 +425,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
   const replacements = saiaInsight?.replacements ?? []
   const sourceDocuments = saiaInsight?.source_documents ?? []
   const runs = saiaInsight?.runs ?? []
+  const showSaiaDetails = !shouldSkipSaiaFetch
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -428,38 +509,44 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                 )}
                 {!isLoadingSaia && !saiaError && saiaInsight && (
                   <div className="space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Status</div>
-                        <div className="mt-1 font-medium">{formatLabel(saiaInsight.saia_status)}</div>
+                    {showSaiaDetails ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Status</div>
+                          <div className="mt-1 font-medium">{formatLabel(saiaInsight.saia_status)}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Processed at</div>
+                          <div className="mt-1 font-medium">{saiaInsight.saia_processed_at || 'Not recorded'}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Claims</div>
+                          <div className="mt-1 font-medium">{saiaInsight.summary?.claim_count ?? 0}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Canonical facts</div>
+                          <div className="mt-1 font-medium">{saiaInsight.summary?.canonical_fact_count ?? 0}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Source documents</div>
+                          <div className="mt-1 font-medium">{saiaInsight.summary?.document_count ?? 0}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Replacements</div>
+                          <div className="mt-1 font-medium">{saiaInsight.summary?.replacement_count ?? 0}</div>
+                        </div>
                       </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Processed at</div>
-                        <div className="mt-1 font-medium">{saiaInsight.saia_processed_at || 'Not recorded'}</div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                        {saiaInsight.saia_error || 'SAIA does not apply to assistant-only provenance messages.'}
                       </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Claims</div>
-                        <div className="mt-1 font-medium">{saiaInsight.summary?.claim_count ?? 0}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Canonical facts</div>
-                        <div className="mt-1 font-medium">{saiaInsight.summary?.canonical_fact_count ?? 0}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Source documents</div>
-                        <div className="mt-1 font-medium">{saiaInsight.summary?.document_count ?? 0}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Replacements</div>
-                        <div className="mt-1 font-medium">{saiaInsight.summary?.replacement_count ?? 0}</div>
-                      </div>
-                    </div>
-                    {saiaInsight.saia_error && (
+                    )}
+                    {showSaiaDetails && saiaInsight.saia_error && (
                       <div className="rounded-lg border border-dashed p-4 text-sm text-red-500">
                         {saiaInsight.saia_error}
                       </div>
                     )}
-                    {(saiaInsight.summary?.preview_claim_count ?? 0) > 0 && claims.length === 0 && (
+                    {showSaiaDetails && (saiaInsight.summary?.preview_claim_count ?? 0) > 0 && claims.length === 0 && (
                       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                         Current SAIA can ground this message, but the saved run did not persist any claims. Preview-only
                         interpretations are shown below.
@@ -469,6 +556,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                 )}
               </section>
 
+              {showSaiaDetails && (
               <section className="space-y-3">
                 <div className="text-sm font-semibold">Grounded interpretations</div>
                 {groundedClaims.length > 0 ? (
@@ -541,7 +629,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                   </div>
                 )}
               </section>
+              )}
 
+              {showSaiaDetails && (
               <section className="space-y-3">
                 <div className="text-sm font-semibold">Source documents</div>
                 {sourceDocuments.length > 0 ? (
@@ -572,7 +662,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                   </div>
                 )}
               </section>
+              )}
 
+              {showSaiaDetails && (
               <section className="space-y-3">
                 <div className="text-sm font-semibold">Claims</div>
                 {claims.length > 0 ? (
@@ -628,7 +720,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                   </div>
                 )}
               </section>
+              )}
 
+              {showSaiaDetails && (
               <section className="space-y-3">
                 <div className="text-sm font-semibold">Canonical facts</div>
                 {canonicalFacts.length > 0 ? (
@@ -666,7 +760,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                   </div>
                 )}
               </section>
+              )}
 
+              {showSaiaDetails && (
               <section className="space-y-3">
                 <div className="text-sm font-semibold">Replacements</div>
                 {replacements.length > 0 ? (
@@ -697,8 +793,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                   </div>
                 )}
               </section>
+              )}
 
-              {runs.length > 0 && (
+              {showSaiaDetails && runs.length > 0 && (
                 <section className="space-y-3">
                   <div className="text-sm font-semibold">SAIA runs</div>
                   <div className="space-y-3">
@@ -725,23 +822,36 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                 <section className="space-y-3">
                   <div className="text-sm font-semibold">Retrieval overview</div>
                   {trace ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Query type</div>
-                        <div className="mt-1 font-medium">{formatLabel(trace.query_type || 'unknown')}</div>
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Query type</div>
+                          <div className="mt-1 font-medium">{formatLabel(trace.query_type || 'unknown')}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Scope</div>
+                          <div className="mt-1 font-medium">{trace.user_scoped ? 'User scoped' : 'Global graph'}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Results used</div>
+                          <div className="mt-1 font-medium">{trace.result_count ?? 0}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Max hops</div>
+                          <div className="mt-1 font-medium">{trace.max_hop_count ?? 0}</div>
+                        </div>
                       </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Scope</div>
-                        <div className="mt-1 font-medium">{trace.user_scoped ? 'User scoped' : 'Global graph'}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Results used</div>
-                        <div className="mt-1 font-medium">{trace.result_count ?? 0}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Max hops</div>
-                        <div className="mt-1 font-medium">{trace.max_hop_count ?? 0}</div>
-                      </div>
+                      {trace.error && (
+                        <div className="rounded-lg border border-dashed p-4 text-sm text-red-500">
+                          Retrieval failed before evidence could be assembled: {trace.error}
+                        </div>
+                      )}
+                      {shouldSkipSaiaFetch && (
+                        <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                          This SAGE answer carries retrieval provenance, but the assistant message itself is not ingested into
+                          the graph. SAIA sections above are informational only for this kind of message.
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -785,7 +895,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                         <div key={`${item.chunk_id || 'evidence'}-${index}`} className="rounded-lg border p-4">
                           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             <span>Rank {index + 1}</span>
-                            {item.similarity !== undefined && <span>Similarity {item.similarity}</span>}
+                            {(item.rank_score ?? item.similarity) !== undefined && (
+                              <span>Score {(item.rank_score ?? item.similarity)?.toFixed?.(4) ?? (item.rank_score ?? item.similarity)}</span>
+                            )}
                             {item.hop_count !== undefined && <span>{item.hop_count} hops</span>}
                           </div>
                           <div className="mt-2 text-sm font-medium">
@@ -820,7 +932,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      No ranked evidence was captured for this answer.
+                      {trace?.error
+                        ? `No ranked evidence was captured because retrieval failed: ${trace.error}`
+                        : 'No ranked evidence was captured for this answer.'}
                     </div>
                   )}
                 </section>
@@ -926,7 +1040,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                     <GraphGlobalSnapshotFlow trace={null} graph={topGraph} path={topPath} />
                   ) : (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      No Neo4j subgraph available for the {rankLabel} result.
+                      {topEvidence?.chunk_id
+                        ? `No Neo4j subgraph available for the ${rankLabel} result.`
+                        : `No Neo4j subgraph is available because ${rankLabel} did not return an evidence chunk.`}
                     </div>
                   )}
                 </div>

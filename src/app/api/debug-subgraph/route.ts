@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
     }
 
     const search = request.nextUrl.search
-    const data = await backendFetchJson(`/api/debug-subgraph${search}`)
+    const data = await backendFetchJson(`/api/debug-subgraph${search}`, {
+      skipBootstrap: true,
+      timeoutMs: 10000,
+    })
     return NextResponse.json(data)
   } catch (error) {
     if (error instanceof BackendProxyError) {
