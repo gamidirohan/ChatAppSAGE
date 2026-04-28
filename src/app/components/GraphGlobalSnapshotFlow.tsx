@@ -2,8 +2,8 @@
 
 import { useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import type { Edge, Node } from 'reactflow'
-import { forceCenter, forceLink, forceManyBody, forceSimulation } from 'd3-force'
+import { MarkerType, type Edge, type Node } from 'reactflow'
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type SimulationNodeDatum } from 'd3-force'
 
 import type { ChatTrace, ChatTraceEvidence } from '@/types'
 
@@ -20,6 +20,7 @@ export type GraphPathRelationship = {
   type: string
   source: string
   target: string
+  direction?: string | null
 }
 
 export type GraphRetrievalPathResponse = {
@@ -113,6 +114,14 @@ function evidenceTitle(item: ChatTraceEvidence, index: number) {
   )
 }
 
+function edgeLabel(type: string, direction?: string | null) {
+  const normalizedType = type.replace(/_/g, ' ')
+  if (!direction) {
+    return normalizedType
+  }
+  return `${normalizedType} (${direction.replace(/_/g, ' ')})`
+}
+
 export default function GraphGlobalSnapshotFlow({ trace, path, graph, className }: Props) {
   const { nodes, edges } = useMemo(() => {
     // Prefer rendering the concrete Neo4j hop path when available.
@@ -156,19 +165,32 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
         }))
 
       // Run a fixed number of ticks for deterministic layout.
+      const collisionRadius = (node: SimulationNodeDatum & { label?: string }) => {
+        const textLength = node.label?.length ?? 0
+        const base = 72
+        const textPadding = Math.min(120, textLength * 0.6)
+        return base + textPadding
+      }
+
       const simulation = forceSimulation(simNodes as any)
         .force(
           'link',
           forceLink(simLinks as any)
             .id((d: any) => d.id)
-            .distance(120)
-            .strength(0.8),
+            .distance(170)
+            .strength(0.95),
         )
-        .force('charge', forceManyBody().strength(-500))
+        .force('charge', forceManyBody().strength(-800))
+        .force(
+          'collide',
+          forceCollide()
+            .radius(collisionRadius)
+            .strength(1),
+        )
         .force('center', forceCenter(0, 0))
         .stop()
 
-      for (let i = 0; i < 220; i += 1) {
+      for (let i = 0; i < 300; i += 1) {
         simulation.tick()
       }
 
@@ -186,7 +208,7 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
 
         builtNodes.push({
           id: n.id,
-          position: { x: (n.x ?? 0) * 1.2, y: (n.y ?? 0) * 1.2 },
+          position: { x: (n.x ?? 0) * 1.6, y: (n.y ?? 0) * 1.6 },
           data: { label: labelLines.join('\n') },
           style: {
             border: `2px solid ${theme.borderColor}`,
@@ -212,13 +234,27 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
           id: `e_${idx}_${safeId(r.type)}_${safeId(r.source)}_${safeId(r.target)}`,
           source: r.source,
           target: r.target,
-          label: hopLabel ? `${hopLabel}: ${r.type.replace(/_/g, ' ')}` : r.type.replace(/_/g, ' '),
+          label: hopLabel ? `${hopLabel}: ${edgeLabel(r.type, r.direction)}` : edgeLabel(r.type, r.direction),
           animated: isHighlighted,
           style: {
             stroke: isHighlighted ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
             strokeWidth: isHighlighted ? 2.5 : 1.25,
           },
-          labelStyle: { fontSize: 11 },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
+          labelStyle: {
+            fontSize: 11,
+            color: 'hsl(var(--foreground))',
+            fill: 'hsl(var(--foreground))',
+            fontWeight: 600,
+          },
+          labelBgPadding: [6, 4],
+          labelBgBorderRadius: 6,
+          labelBgStyle: {
+            fill: 'hsl(var(--card))',
+            fillOpacity: 0.9,
+            stroke: 'hsl(var(--border))',
+            strokeWidth: 0.7,
+          },
         })
       })
 
@@ -266,9 +302,10 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
           id: `rel_${idx}_${safeId(rel.type)}`,
           source: rel.source,
           target: rel.target,
-          label: rel.type.replace(/_/g, ' '),
+          label: edgeLabel(rel.type, rel.direction),
           animated: false,
           style: { stroke: 'hsl(var(--foreground))' },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
           labelStyle: { fontSize: 11 },
         })
       })
@@ -328,6 +365,7 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
         label: `rank ${index + 1}`,
         animated: true,
         style: { stroke: 'hsl(var(--foreground))' },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
         labelStyle: { fontSize: 11 },
       })
 
@@ -358,9 +396,10 @@ export default function GraphGlobalSnapshotFlow({ trace, path, graph, className 
           id: `edge_${evidenceId}_${relatedId}`,
           source: evidenceId,
           target: relatedId,
-          label: item.relationship ? item.relationship.replace(/_/g, ' ') : 'related',
+          label: item.relationship ? edgeLabel(item.relationship, item.direction) : 'related',
           animated: false,
           style: { stroke: 'hsl(var(--muted-foreground))' },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
           labelStyle: { fontSize: 11 },
         })
       }

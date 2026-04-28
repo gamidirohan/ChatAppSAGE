@@ -1,5 +1,5 @@
 export type ConversationType = 'direct' | 'group' | 'sage'
-export type GraphSyncStatus = 'ready' | 'failed' | 'skipped'
+export type GraphSyncStatus = 'ready' | 'failed' | 'skipped' | 'pending'
 
 export interface FileAttachment {
   id: string
@@ -15,6 +15,7 @@ export interface ChatTraceEvidence {
   similarity?: number
   rank_score?: number
   relationship?: string
+  direction?: string
   retrieval_path?: string
   hop_count?: number
   document?: {
@@ -29,6 +30,21 @@ export interface ChatTraceEvidence {
     display_name?: string
     id?: string
   }
+  related_node_id?: string
+  fact?: {
+    claim_type?: string
+    status?: string
+    canonical_key?: string
+    subject_key?: string
+    subject_entity_id?: string
+    object_key?: string
+    object_entity_id?: string
+    temporal_start?: string
+    temporal_end?: string
+    temporal_granularity?: string
+    support_count?: number
+    confidence?: number
+  } | null
 }
 
 export interface ChatTrace {
@@ -41,6 +57,7 @@ export interface ChatTrace {
   max_hop_count?: number
   retrieval_path?: string
   evidence?: ChatTraceEvidence[]
+  no_evidence?: boolean
   error?: string
 }
 
@@ -168,6 +185,7 @@ export interface SAIASourceDocument {
 }
 
 export interface SAIARun {
+  id?: string
   run_id?: string
   source_doc_id?: string
   source_kind?: string
@@ -201,6 +219,7 @@ export interface MessageSAIAInsight {
   saia_status?: string
   saia_processed_at?: string
   saia_error?: string
+  warnings?: string[]
   source_documents?: SAIASourceDocument[]
   runs?: SAIARun[]
   claims?: SAIAClaim[]

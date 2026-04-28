@@ -11,9 +11,11 @@ export async function GET(request: NextRequest) {
     }
 
     const search = request.nextUrl.search
+    const debugAuthToken = process.env.DEBUG_GRAPH_AUTH_TOKEN
     const data = await backendFetchJson(`/api/debug-graph${search}`, {
       skipBootstrap: true,
       timeoutMs: 10000,
+      headers: debugAuthToken ? { 'X-Debug-Auth': debugAuthToken } : undefined,
     })
     return NextResponse.json(data)
   } catch (error) {

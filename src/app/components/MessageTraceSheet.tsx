@@ -65,6 +65,32 @@ function formatLabel(label?: string | null) {
   return String(label || 'unknown').replace(/_/g, ' ')
 }
 
+function normalizeSaiaStatus(status?: string | null) {
+  const normalized = String(status || '').trim().toLowerCase()
+  if (!normalized) {
+    return 'unknown'
+  }
+  return {
+    completed: 'succeeded',
+    succeeded: 'succeeded',
+    skipped: 'not_processed',
+    not_processed: 'not_processed',
+    disabled: 'disabled',
+    failed: 'failed',
+  }[normalized] || normalized
+}
+
+function formatSaiaMessage(message?: string | null) {
+  const normalized = String(message || '').trim()
+  if (!normalized) {
+    return ''
+  }
+  return {
+    no_claims: 'No claims were extracted for this message.',
+    source_ineligible: 'This message was not eligible for SAIA processing.',
+  }[normalized] || normalized.replace(/_/g, ' ')
+}
+
 function formatConfidence(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return 'n/a'
@@ -125,6 +151,8 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
   const [graphSnapshot, setGraphSnapshot] = useState<GraphSnapshot | null>(null)
   const [graphError, setGraphError] = useState<string | null>(null)
   const [isLoadingGraph, setIsLoadingGraph] = useState(false)
+  const [graphFetchedAt, setGraphFetchedAt] = useState<number | null>(null)
+  const [, setGraphAgeTick] = useState(0)
   const [saiaInsight, setSaiaInsight] = useState<MessageSAIAInsight | null>(null)
   const [saiaError, setSaiaError] = useState<string | null>(null)
   const [isLoadingSaia, setIsLoadingSaia] = useState(false)
@@ -146,9 +174,26 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
   const [isLoadingTopGraph, setIsLoadingTopGraph] = useState(false)
 
   useEffect(() => {
-    if (!open || graphSnapshot) {
+    if (!open) {
       return
     }
+
+    const intervalId = window.setInterval(() => {
+      setGraphAgeTick((value) => value + 1)
+    }, 15000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    // Always refetch on open to avoid stale UI.
+    setGraphSnapshot(null)
 
     let cancelled = false
     const controller = new AbortController()
@@ -173,9 +218,12 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
         const payload = await response.json()
         if (!cancelled) {
           setGraphSnapshot(normalizeGraphSnapshot(payload))
+          setGraphFetchedAt(Date.now())
         }
       } catch (error) {
         if (!cancelled) {
+          setGraphSnapshot(null)
+          setGraphFetchedAt(null)
           if ((error as { name?: string } | null)?.name === 'AbortError' && timedOut) {
             setGraphError('Timed out loading graph snapshot. Check whether the backend and Neo4j are responding.')
           } else {
@@ -201,7 +249,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
         window.clearTimeout(timeoutId)
       }
     }
-  }, [graphSnapshot, open])
+  }, [open])
 
   useEffect(() => {
     if (!open || !message?.id) {
@@ -337,6 +385,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
         const payload = (await response.json()) as GraphRetrievalPathResponse
         setTopPath(payload)
       } catch (error) {
+        setTopPath(null)
         if ((error as { name?: string } | null)?.name !== 'AbortError') {
           setTopPathError(error instanceof Error ? error.message : `Failed to load ${rankLabel} path`)
         } else if (timedOut) {
@@ -397,6 +446,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
         const payload = (await response.json()) as GraphSubgraphResponse
         setTopGraph(payload)
       } catch (error) {
+        setTopGraph(null)
         if ((error as { name?: string } | null)?.name !== 'AbortError') {
           setTopGraphError(error instanceof Error ? error.message : `Failed to load ${rankLabel} subgraph`)
         } else if (timedOut) {
@@ -425,7 +475,13 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
   const replacements = saiaInsight?.replacements ?? []
   const sourceDocuments = saiaInsight?.source_documents ?? []
   const runs = saiaInsight?.runs ?? []
+  const saiaWarnings = saiaInsight?.warnings ?? []
   const showSaiaDetails = !shouldSkipSaiaFetch
+  const graphIsStale = Boolean(graphFetchedAt && Date.now() - graphFetchedAt > 60000)
+  const missingEvidenceLabels = [
+    !hasTop2 ? 'Top-2 not available' : null,
+    !hasTop3 ? 'Top-3 not available' : null,
+  ].filter(Boolean) as string[]
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -513,7 +569,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-lg border p-3">
                           <div className="text-xs uppercase tracking-wide text-muted-foreground">Status</div>
-                          <div className="mt-1 font-medium">{formatLabel(saiaInsight.saia_status)}</div>
+                          <div className="mt-1 font-medium">{formatLabel(normalizeSaiaStatus(saiaInsight.saia_status))}</div>
                         </div>
                         <div className="rounded-lg border p-3">
                           <div className="text-xs uppercase tracking-wide text-muted-foreground">Processed at</div>
@@ -538,12 +594,25 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                       </div>
                     ) : (
                       <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        {saiaInsight.saia_error || 'SAIA does not apply to assistant-only provenance messages.'}
+                        {formatSaiaMessage(saiaInsight.saia_error) ||
+                          'SAIA does not apply to assistant-only provenance messages.'}
                       </div>
                     )}
                     {showSaiaDetails && saiaInsight.saia_error && (
                       <div className="rounded-lg border border-dashed p-4 text-sm text-red-500">
-                        {saiaInsight.saia_error}
+                        {formatSaiaMessage(saiaInsight.saia_error)}
+                      </div>
+                    )}
+                    {showSaiaDetails && saiaWarnings.length > 0 && (
+                      <div className="space-y-2">
+                        {saiaWarnings.map((warning, index) => (
+                          <div
+                            key={`${saiaInsight.message_id}-warning-${index}`}
+                            className="rounded-lg border border-dashed p-4 text-sm text-amber-700"
+                          >
+                            {formatSaiaMessage(warning)}
+                          </div>
+                        ))}
                       </div>
                     )}
                     {showSaiaDetails && (saiaInsight.summary?.preview_claim_count ?? 0) > 0 && claims.length === 0 && (
@@ -646,7 +715,8 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                           Doc ID: {document.doc_id || 'unknown'} | Source: {document.source || 'unknown'}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          SAIA status: {formatLabel(document.saia_status)} | Timestamp: {document.timestamp || 'unknown'}
+                          SAIA status: {formatLabel(normalizeSaiaStatus(document.saia_status))} | Timestamp:{' '}
+                          {document.timestamp || 'unknown'}
                         </div>
                         {document.attachment_name && (
                           <div className="mt-1 text-xs text-muted-foreground">
@@ -800,17 +870,18 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                   <div className="text-sm font-semibold">SAIA runs</div>
                   <div className="space-y-3">
                     {runs.map((run) => (
-                      <div key={run.run_id || run.source_doc_id || 'run'} className="rounded-lg border p-4">
-                        <div className="text-sm font-medium">{run.run_id || 'Run'}</div>
+                      <div key={run.id || run.run_id || run.source_doc_id || 'run'} className="rounded-lg border p-4">
+                        <div className="text-sm font-medium">{run.run_id || run.id || 'Run'}</div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Source doc: {run.source_doc_id || 'unknown'} | Status: {formatLabel(run.status)}
+                          Source doc: {run.source_doc_id || 'unknown'} | Status:{' '}
+                          {formatLabel(normalizeSaiaStatus(run.status))}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           Claims: {run.claims_extracted ?? 0} | Canonicalized: {run.claims_canonicalized ?? 0} |
                           Conflicts: {run.conflicts_found ?? 0}
                         </div>
                         {run.errors?.reason && (
-                          <div className="mt-1 text-xs text-red-500">{run.errors.reason}</div>
+                          <div className="mt-1 text-xs text-red-500">{formatSaiaMessage(run.errors.reason)}</div>
                         )}
                       </div>
                     ))}
@@ -941,7 +1012,14 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
               )}
 
               <section className="space-y-3">
-                <div className="text-sm font-semibold">Global graph snapshot</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-semibold">Global graph snapshot</div>
+                  {graphIsStale && (
+                    <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                      Stale
+                    </span>
+                  )}
+                </div>
                 {isLoadingGraph && (
                   <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                     Loading graph counts...
@@ -1007,6 +1085,16 @@ export default function MessageTraceSheet({ message, open, onOpenChange }: Props
                       </TabsTrigger>
                     </TabsList>
                   </Tabs>
+
+                  {missingEvidenceLabels.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {missingEvidenceLabels.map((label) => (
+                        <span key={label} className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {isLoadingTopGraph && (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
