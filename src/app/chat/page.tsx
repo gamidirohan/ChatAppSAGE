@@ -196,6 +196,16 @@ export default function ChatPage() {
               }`}
               onClick={() => {
                 setSelectedConversationId(conversation.id)
+                setConversations((prev) =>
+                  prev.map((item) =>
+                    item.id === conversation.id
+                      ? {
+                          ...item,
+                          unreadCount: 0,
+                        }
+                      : item
+                  )
+                )
                 if (isMobile) {
                   const button = document.querySelector('.mobile-menu-close')
                   if (button instanceof HTMLButtonElement) {

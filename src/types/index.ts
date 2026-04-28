@@ -47,6 +47,98 @@ export interface ChatTraceEvidence {
   } | null
 }
 
+export interface AgenticToolCall {
+  tool?: string
+  attempt?: number
+  query?: string
+  status?: string
+  result_count?: number
+  duration_ms?: number
+  error?: string | null
+}
+
+export interface AgenticRound {
+  attempt?: number
+  tool?: string
+  result_count?: number
+  evidence_ref_count?: number
+  validated_evidence_count?: number
+  enough_context?: boolean
+}
+
+export interface AgentEvent {
+  event_id?: string
+  run_id?: string
+  timestamp?: string
+  event_type?: string
+  agent?: string
+  stage?: string
+  status?: string
+  message?: string
+  tool?: string
+  attempt?: number
+  duration_ms?: number
+  result_count?: number
+  error?: string | null
+}
+
+export interface AgenticPlanner {
+  planner?: string
+  intent?: string
+  entities?: string[]
+  extracted_constraints?: Record<string, unknown>
+  required_evidence?: string[]
+  risk_flags?: string[]
+  strategy?: string
+  agents?: string[]
+  tool_sequence?: string[]
+  tool_plan?: Array<{ tool?: string; purpose?: string }>
+  stop_conditions?: string[]
+  selector?: {
+    strategy?: string
+    reasons?: string[]
+    llm_used?: boolean
+    heuristic_confidence?: number
+  }
+  constraints?: {
+    allowed_nodes?: string[]
+    allowed_edges?: string[]
+    max_depth?: number
+    max_rounds?: number
+    max_retries?: number
+  }
+}
+
+export interface AgenticTrace {
+  enabled?: boolean
+  run_id?: string
+  planner?: AgenticPlanner
+  rounds?: AgenticRound[]
+  tool_calls?: AgenticToolCall[]
+  events?: AgentEvent[]
+  route_history?: AgentEvent[]
+  current_agent?: string | null
+  stop_reason?: string
+  reasoner?: {
+    valid?: boolean
+    validated_evidence_count?: number
+    invalid_refs?: string[]
+    missing_fields?: Array<{ evidence_index?: number; missing?: string[] }>
+  }
+  generator?: {
+    answer_mode?: string
+    reason_code?: string
+  }
+  critic?: {
+    passed?: boolean
+    retryable?: boolean
+    issues?: string[]
+    grounded_evidence_count?: number
+    provenance_count?: number
+  }
+  status?: string
+}
+
 export interface ChatTrace {
   query?: string
   query_type?: string
@@ -58,7 +150,9 @@ export interface ChatTrace {
   retrieval_path?: string
   evidence?: ChatTraceEvidence[]
   no_evidence?: boolean
+  evidence_state?: 'no_evidence' | 'partial_evidence' | 'grounded'
   error?: string
+  agentic?: AgenticTrace
 }
 
 export interface AnswerPayload {
@@ -190,10 +284,27 @@ export interface SAIARun {
   source_doc_id?: string
   source_kind?: string
   status?: string
+  reason?: string
   processed_at?: string
   claims_extracted?: number
   claims_canonicalized?: number
   conflicts_found?: number
+  changed_fact_ids?: string[]
+  affected_node_ids?: string[]
+  invalidated_query_ids?: string[]
+  reembed_target_ids?: string[]
+  diff_summary?: {
+    changed_fact_count?: number
+    mutation_counts?: Record<string, number>
+  }
+  impact_summary?: {
+    affected_node_count?: number
+    changed_fact_count?: number
+    reembed_target_count?: number
+  }
+  invalidation_summary?: {
+    invalidated_query_count?: number
+  }
   errors?: {
     reason?: string
     raw?: string
@@ -220,6 +331,19 @@ export interface MessageSAIAInsight {
   saia_processed_at?: string
   saia_error?: string
   warnings?: string[]
+  diff_summary?: {
+    changed_fact_count?: number
+    mutation_counts?: Record<string, number>
+  }
+  impact_summary?: {
+    affected_node_count?: number
+    changed_fact_count?: number
+    reembed_target_count?: number
+  }
+  invalidation_summary?: {
+    invalidated_query_count?: number
+  }
+  reembed_target_ids?: string[]
   source_documents?: SAIASourceDocument[]
   runs?: SAIARun[]
   claims?: SAIAClaim[]

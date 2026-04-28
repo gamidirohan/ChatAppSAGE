@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "node scripts/run-lint.mjs",
     "lint:eslint": "next lint",
-    "lint:types": "npx tsc --noEmit",
+    "lint:types": "npx next typegen && npx tsc --noEmit",
     "websocket": "node websocket-server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run websocket\""
   },
