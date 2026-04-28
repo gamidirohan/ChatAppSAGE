@@ -2,14 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
-import { FileText, Info, Paperclip, Send, Users, X } from 'lucide-react'
+import { Check, CircuitBoard, Copy, FileText, Info, Paperclip, Send, Users, X } from 'lucide-react'
 
+import AgentExecutionRail from '@/app/components/AgentExecutionRail'
 import MessageTraceSheet from '@/app/components/MessageTraceSheet'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { ConversationSummary, FileAttachment, Message, User } from '@/types'
+import { AgentEvent, ConversationSummary, FileAttachment, Message, User } from '@/types'
 
 type Props = {
   currentUserId: string
@@ -43,6 +52,323 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
+type SageChatPayload = {
+  answer?: string
+  answer_payload?: Message['answerPayload']
+  thinking?: string[]
+  trace?: Message['trace']
+  detail?: string
+}
+
+function parseSseBlock(block: string) {
+  let event = 'message'
+  const dataLines: string[] = []
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trimEnd()
+    if (!line || line.startsWith(':')) {
+      continue
+    }
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart())
+    }
+  }
+  if (!dataLines.length) {
+    return null
+  }
+  return { event, data: dataLines.join('\n') }
+}
+
+async function readSageChatStream(
+  response: Response,
+  onAgentEvent: (event: AgentEvent) => void
+): Promise<SageChatPayload> {
+  if (!response.body) {
+    throw new Error('SAGE did not return a readable stream')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalPayload: SageChatPayload | null = null
+
+  const handleBlock = (block: string) => {
+    const parsed = parseSseBlock(block)
+    if (!parsed) {
+      return
+    }
+    const payload = JSON.parse(parsed.data)
+    if (parsed.event === 'progress') {
+      // Suppress compatibility fallback notifications so users see a clean rail.
+      if (payload?.event_type === 'stream_fallback') return
+      onAgentEvent(payload as AgentEvent)
+      // progress events do not carry thinking today; ignore
+    } else if (parsed.event === 'final') {
+      finalPayload = payload as SageChatPayload
+    } else if (parsed.event === 'error') {
+      throw new Error(String(payload?.detail || 'SAGE stream failed'))
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split(/\r?\n\r?\n/)
+    buffer = blocks.pop() || ''
+    for (const block of blocks) {
+      handleBlock(block)
+    }
+  }
+
+  buffer += decoder.decode()
+  if (buffer.trim()) {
+    handleBlock(buffer)
+  }
+  if (!finalPayload) {
+    throw new Error('SAGE stream ended before returning an answer')
+  }
+  return finalPayload
+}
+
+function formatMessageForCopy(message: Message) {
+  const sections: string[] = []
+  const payload = message.answerPayload
+
+  sections.push(payload?.summary || message.content)
+
+  if (payload?.bullets?.length) {
+    sections.push(`Bullets:\n${payload.bullets.map((bullet) => `- ${bullet}`).join('\n')}`)
+  }
+  if (payload?.explanation) {
+    sections.push(`Explanation:\n${payload.explanation}`)
+  }
+  if (payload?.evidence_refs?.length) {
+    sections.push(`Evidence refs:\n${payload.evidence_refs.map((ref) => `- ${ref}`).join('\n')}`)
+  }
+  if (message.attachment) {
+    sections.push(`Attachment:\n${message.attachment.name} (${message.attachment.type || 'unknown type'})`)
+  }
+  if (message.thinking?.length) {
+    sections.push(`Thinking summary:\n${message.thinking.map((item) => `- ${item}`).join('\n')}`)
+  }
+
+  const agentic = message.trace?.agentic
+  if (agentic) {
+    const toolCalls = agentic.tool_calls?.map((toolCall) => {
+      const pieces = [
+        toolCall.tool || 'unknown',
+        toolCall.status ? `status=${toolCall.status}` : null,
+        typeof toolCall.result_count === 'number' ? `results=${toolCall.result_count}` : null,
+      ].filter(Boolean)
+      return `- ${pieces.join(' | ')}`
+    })
+    sections.push(
+      [
+        'Agent flow:',
+        `Status: ${agentic.status || 'unknown'}`,
+        `Planner: ${agentic.planner?.intent || agentic.planner?.strategy || agentic.planner?.planner || 'unknown'}`,
+        `Stop reason: ${agentic.stop_reason || 'unknown'}`,
+        toolCalls?.length ? `Tool calls:\n${toolCalls.join('\n')}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    )
+  }
+
+  return sections.filter((section) => section.trim()).join('\n\n')
+}
+
+function agentEvent(
+  message: Message,
+  agent: string,
+  stage: string,
+  status: string,
+  text: string,
+  tool?: string,
+  index = 0
+): AgentEvent {
+  return {
+    event_id: `message-${message.id}-${agent}-${stage}-${tool || 'agent'}-${index}`,
+    run_id: message.trace?.agentic?.run_id || message.id,
+    timestamp: message.sentAt,
+    event_type: status === 'running' ? 'agent_started' : 'agent_finished',
+    agent,
+    stage,
+    status,
+    message: text,
+    tool,
+  }
+}
+
+const RAIL_AGENT_KEYS = new Set([
+  'planner',
+  'retriever',
+  'semantic',
+  'fulltext',
+  'graph',
+  'reasoner',
+  'generator',
+  'critic',
+])
+
+function countRailStageCoverage(events: AgentEvent[]) {
+  const covered = new Set<string>()
+  events.forEach((event) => {
+    const agent = event.agent?.toLowerCase()
+    const tool = event.tool?.toLowerCase()
+    if (agent && RAIL_AGENT_KEYS.has(agent)) {
+      covered.add(agent)
+    }
+    if (tool && RAIL_AGENT_KEYS.has(tool)) {
+      covered.add(tool)
+    }
+  })
+  return covered.size
+}
+
+function buildFallbackPipelineEvents(message: Message): AgentEvent[] {
+  const trace = message.trace
+  const answerPayload = message.answerPayload
+  const evidence = trace?.evidence || []
+  const evidenceCount = evidence.length
+  const resultCount = typeof trace?.result_count === 'number' ? trace.result_count : evidenceCount
+  const evidenceRefCount = answerPayload?.evidence_refs?.length ?? 0
+  const evidenceState =
+    trace?.evidence_state || (trace?.no_evidence ? 'no_evidence' : evidenceCount > 0 ? 'grounded' : 'partial_evidence')
+  const hasRetrievalTrace = Boolean(
+    trace?.query ||
+      trace?.retrieval_path ||
+      trace?.matched_entities?.length ||
+      evidenceCount ||
+      typeof trace?.result_count === 'number'
+  )
+  const hasGraphBinding = evidence.some(
+    (item) => item.relationship || item.direction || item.related_node_id || item.retrieval_path
+  )
+  const hasCriticSummary = (message.thinking || []).some((item) => /critic/i.test(item))
+  const events: AgentEvent[] = [
+    agentEvent(message, 'planner', 'plan', 'completed', 'Planner prepared the reply path.'),
+  ]
+
+  if (hasRetrievalTrace) {
+    events.push(
+      agentEvent(
+        message,
+        'retriever',
+        'retrieve',
+        'completed',
+        `Retriever gathered ${resultCount} candidate evidence item(s).`
+      )
+    )
+  }
+
+  if (hasGraphBinding) {
+    events.push(
+      agentEvent(
+        message,
+        'graph',
+        'validate_paths',
+        'completed',
+        'Graph bindings were available for this reply.'
+      )
+    )
+  }
+
+  if (hasRetrievalTrace || trace || answerPayload) {
+    const reasonerMessage =
+      evidenceState === 'no_evidence'
+        ? 'Reasoner completed with no grounded evidence available.'
+        : `Reasoner completed with ${evidenceRefCount || evidenceCount} bound evidence reference(s).`
+    events.push(agentEvent(message, 'reasoner', 'validate_paths', 'completed', reasonerMessage))
+  }
+
+  events.push(agentEvent(message, 'generator', 'generate', 'completed', 'Generator produced the answer.'))
+
+  if (hasCriticSummary) {
+    events.push(agentEvent(message, 'critic', 'critic', 'completed', 'Critic completed final checks.'))
+  }
+
+  return events
+}
+
+function buildMessageAgentRailEvents(message: Message): AgentEvent[] {
+  const storedEvents = message.trace?.agentic?.events ?? []
+  if (countRailStageCoverage(storedEvents) >= 2) {
+    return storedEvents
+  }
+
+  const agentic = message.trace?.agentic
+  if (!agentic) {
+    return buildFallbackPipelineEvents(message)
+  }
+
+  const events: AgentEvent[] = [
+    agentEvent(message, 'planner', 'plan', 'completed', 'Planner prepared an answer strategy.'),
+  ]
+
+  const toolCalls = agentic.tool_calls ?? []
+  toolCalls.forEach((toolCall, index) => {
+    const tool = toolCall.tool || 'retriever'
+    events.push(
+      agentEvent(
+        message,
+        'retriever',
+        'retrieve',
+        'completed',
+        `Retriever used ${tool}.`,
+        tool,
+        index
+      )
+    )
+    events.push({
+      ...agentEvent(
+        message,
+        tool,
+        'retrieve',
+        toolCall.status === 'failed' ? 'failed' : 'completed',
+        `${tool} returned ${toolCall.result_count ?? 0} result(s).`,
+        tool,
+        index
+      ),
+      result_count: toolCall.result_count,
+      duration_ms: toolCall.duration_ms,
+      error: toolCall.error,
+    })
+  })
+
+  if (agentic.reasoner) {
+    events.push(
+      agentEvent(
+        message,
+        'reasoner',
+        'validate_paths',
+        'completed',
+        `Reasoner validated ${agentic.reasoner.validated_evidence_count ?? 0} evidence binding(s).`
+      )
+    )
+  }
+
+  events.push(agentEvent(message, 'generator', 'generate', 'completed', 'Generator produced the answer.'))
+
+  if (agentic.critic) {
+    events.push(
+      agentEvent(
+        message,
+        'critic',
+        'critic',
+        agentic.critic.passed === false ? 'needs_review' : 'completed',
+        agentic.critic.passed === false ? 'Critic found review items.' : 'Critic completed grounding checks.'
+      )
+    )
+  }
+
+  return countRailStageCoverage(events) >= 2 ? events : buildFallbackPipelineEvents(message)
+}
+
 export default function ChatWindow({
   currentUserId,
   currentUser,
@@ -62,14 +388,22 @@ export default function ChatWindow({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [traceMessage, setTraceMessage] = useState<Message | null>(null)
   const [isTraceOpen, setIsTraceOpen] = useState(false)
+  const [forceAdvancedTrace, setForceAdvancedTrace] = useState(false)
+  const [thinkingMessage, setThinkingMessage] = useState<string | null>(null)
+  const [isThinkingOpen, setIsThinkingOpen] = useState(false)
+  const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
+  const [openRetrievalMessageId, setOpenRetrievalMessageId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const markedReadForConversationRef = useRef<string>('')
+  const copyResetTimeoutRef = useRef<number | null>(null)
   const isSageConversation = conversation.type === 'sage'
 
   useEffect(() => {
     markedReadForConversationRef.current = ''
+    setOpenRetrievalMessageId(null)
   }, [conversation.id])
 
   useEffect(() => {
@@ -118,7 +452,15 @@ export default function ChatWindow({
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, 80)
     return () => window.clearTimeout(timeoutId)
-  }, [messages, processingAttachmentName])
+  }, [messages, processingAttachmentName, agentEvents.length])
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeoutRef.current) {
+        window.clearTimeout(copyResetTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const clearSelectedFile = () => {
     setSelectedFile(null)
@@ -302,7 +644,19 @@ export default function ChatWindow({
         content: message.content,
       }))
 
-      const response = await fetch('/api/chat', {
+      const localStartEvent: AgentEvent = {
+        event_id: `local-${Date.now()}`,
+        run_id: 'pending',
+        timestamp: new Date().toISOString(),
+        event_type: 'agent_started',
+        agent: 'planner',
+        stage: 'plan',
+        status: 'running',
+        message: 'Planner is preparing the agent pipeline.',
+      }
+      setAgentEvents([localStartEvent])
+
+      const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -310,13 +664,13 @@ export default function ChatWindow({
           history,
         }),
       })
-      const payload = await parseJsonSafe<{
-        answer?: string
-        answer_payload?: Message['answerPayload']
-        thinking?: string[]
-        trace?: Message['trace']
-        detail?: string
-      }>(response)
+      if (!response.ok) {
+        const errorPayload = await parseJsonSafe<{ detail?: string }>(response)
+        throw new Error(errorPayload?.detail || 'Failed to get SAGE response')
+      }
+      const payload = await readSageChatStream(response, (event) => {
+        setAgentEvents((currentEvents) => [...currentEvents, event])
+      })
       const answerSummary = payload?.answer_payload?.summary || payload?.answer
       if (!response.ok || !answerSummary || !payload?.answer_payload) {
         throw new Error(payload?.detail || 'Failed to get SAGE response')
@@ -329,6 +683,7 @@ export default function ChatWindow({
         thinking: payload.thinking || [],
       })
       await refreshConversationState()
+      setAgentEvents([])
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send message'
       setUploadError(message)
@@ -346,6 +701,7 @@ export default function ChatWindow({
       }
     } finally {
       setIsSending(false)
+      setAgentEvents([])
       setProcessingAttachmentName(null)
     }
   }
@@ -358,6 +714,20 @@ export default function ChatWindow({
   }
 
   const formatMessageTime = (sentAt: string) => format(new Date(sentAt), 'h:mm a')
+
+  const handleCopyMessage = async (message: Message) => {
+    try {
+      await navigator.clipboard.writeText(formatMessageForCopy(message))
+      setCopiedMessageId(message.id)
+      if (copyResetTimeoutRef.current) {
+        window.clearTimeout(copyResetTimeoutRef.current)
+      }
+      copyResetTimeoutRef.current = window.setTimeout(() => setCopiedMessageId(null), 1500)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Failed to copy message')
+    }
+  }
+
   const participantDetails: Array<{ id: string; name: string; avatar?: string }> =
     conversation.participants && conversation.participants.length > 0
       ? conversation.participants.map((member) => ({
@@ -456,6 +826,9 @@ export default function ChatWindow({
             const insightLabel = message.senderId === 'sage' && message.isAiResponse ? 'Answer insight' : 'Message insight'
             const displaySummary = message.answerPayload?.summary || message.content
             const displayBullets = message.answerPayload?.bullets || []
+            const isSageAnswer = Boolean(message.senderId === 'sage' && message.isAiResponse)
+            const persistedAgentEvents = isSageAnswer ? buildMessageAgentRailEvents(message) : []
+            const showRetrievalRail = isSageAnswer && openRetrievalMessageId === message.id
 
             return (
               <div key={message.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
@@ -467,6 +840,15 @@ export default function ChatWindow({
                         : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600'
                     }`}
                   >
+                    {isSageAnswer && showRetrievalRail && (
+                      <div className="mb-3">
+                        <AgentExecutionRail
+                          events={persistedAgentEvents}
+                          className="border-gray-200 bg-gray-50/80 text-gray-700 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-100"
+                        />
+                      </div>
+                    )}
+
                     {/* TODO(agentic): Future planner-driven responses should still render through answerPayload so the chat bubble stays decoupled from backend execution flow. */}
                     <div className="whitespace-pre-wrap">{displaySummary}</div>
 
@@ -514,28 +896,118 @@ export default function ChatWindow({
                     }`}
                   >
                     <span>{formatMessageTime(message.sentAt)}</span>
-                    {showTraceButton && (
+                    <div className="flex items-center gap-1">
+                      {isSageAnswer && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
+                                onClick={() =>
+                                  setOpenRetrievalMessageId((current) => (current === message.id ? null : message.id))
+                                }
+                                aria-label="Toggle retrieval overview"
+                              >
+                                <CircuitBoard className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{showRetrievalRail ? 'Hide retrieval overview' : 'Show retrieval overview'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
                               type="button"
                               className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
-                              onClick={() => {
-                                setTraceMessage(message)
-                                setIsTraceOpen(true)
-                              }}
-                              aria-label={`Open ${insightLabel.toLowerCase()}`}
+                              onClick={() => void handleCopyMessage(message)}
+                              aria-label="Copy full message"
                             >
-                              <Info className="h-3.5 w-3.5" />
+                              {copiedMessageId === message.id ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{insightLabel}</p>
+                            <p>{copiedMessageId === message.id ? 'Copied' : 'Copy full message'}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                    )}
+                      {showTraceButton && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
+                                onClick={() => {
+                                  setTraceMessage(message)
+                                  setIsTraceOpen(true)
+                                  setForceAdvancedTrace(false)
+                                }}
+                                aria-label={`Open ${insightLabel.toLowerCase()}`}
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{insightLabel}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {showTraceButton && message.trace?.agentic && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
+                                onClick={() => {
+                                  setTraceMessage(message)
+                                  setForceAdvancedTrace(true)
+                                  setIsTraceOpen(true)
+                                }}
+                                aria-label="Open advanced trace"
+                              >
+                                <CircuitBoard className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Advanced trace</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {Array.isArray(message.thinking) && message.thinking.length > 0 && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
+                                onClick={() => {
+                                  setThinkingMessage(message.thinking?.join('\n') || null)
+                                  setIsThinkingOpen(true)
+                                }}
+                                aria-label="Show thinking"
+                              >
+                                <CircuitBoard className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Thinking</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -557,6 +1029,21 @@ export default function ChatWindow({
                   </div>
                 </div>
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Working...</div>
+              </div>
+            </div>
+          )}
+
+          {agentEvents.length > 0 && isSageConversation && (
+            <div className="flex justify-start">
+              <div className="max-w-[78%]">
+                <div className="rounded-lg rounded-bl-none border border-gray-200 bg-white px-4 py-3 text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+                    SAGE is working
+                  </div>
+                  <AgentExecutionRail events={agentEvents} />
+                </div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Thinking through the agent pipeline...</div>
               </div>
             </div>
           )}
@@ -632,7 +1119,25 @@ export default function ChatWindow({
         </div>
       </div>
 
-      <MessageTraceSheet message={traceMessage} open={isTraceOpen} onOpenChange={setIsTraceOpen} />
+      <MessageTraceSheet
+        message={traceMessage}
+        open={isTraceOpen}
+        onOpenChange={setIsTraceOpen}
+        forceAdvanced={forceAdvancedTrace}
+      />
+      {thinkingMessage && (
+        <Sheet open={isThinkingOpen} onOpenChange={setIsThinkingOpen}>
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-xl">
+            <SheetHeader>
+              <SheetTitle>Thinking</SheetTitle>
+              <SheetDescription>Model reasoning (sanitized)</SheetDescription>
+            </SheetHeader>
+            <ScrollArea className="mt-4 h-[80vh] pr-2">
+              <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{thinkingMessage}</pre>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }
