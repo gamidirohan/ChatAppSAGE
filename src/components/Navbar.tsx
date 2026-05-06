@@ -52,7 +52,7 @@ export default function Navbar({ className = "" }: { className?: string }) {
 
   return (
     <nav className={`border-b py-3 px-4 bg-white dark:bg-gray-900 dark:border-gray-700 z-10 ${className}`}>
-      <div className="container mx-auto flex justify-between items-center">
+      <div className="w-full flex justify-between items-center">
         <Link href="/" className="flex items-center">
           <Image
             src="/logo.svg"

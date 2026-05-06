@@ -23,6 +23,22 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
+function pinSageConversation(conversations: ConversationSummary[]): ConversationSummary[] {
+  return conversations
+    .map((conversation, index) => ({ conversation, index }))
+    .sort((left, right) => {
+      const leftIsSage = left.conversation.type === 'sage'
+      const rightIsSage = right.conversation.type === 'sage'
+
+      if (leftIsSage === rightIsSage) {
+        return left.index - right.index
+      }
+
+      return leftIsSage ? -1 : 1
+    })
+    .map(({ conversation }) => conversation)
+}
+
 export default function ChatPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
@@ -54,7 +70,7 @@ export default function ChatPage() {
         throw new Error(payload?.detail || 'Failed to load conversations')
       }
 
-      const nextConversations = payload?.conversations || []
+      const nextConversations = pinSageConversation(payload?.conversations || [])
       setConversations(nextConversations)
 
       if (!nextConversations.length) {
