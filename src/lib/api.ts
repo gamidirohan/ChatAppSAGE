@@ -12,6 +12,19 @@ type UploadDocumentOptions = {
   source?: string
 }
 
+export interface UploadDocumentResponse {
+  doc_id: string
+  sender: string
+  receivers: string[]
+  subject: string
+  success: boolean
+  message: string
+  already_exists?: boolean
+  warnings?: string[]
+  saia_status?: string | null
+  saia_last_error?: string | null
+}
+
 async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   try {
     return (await response.json()) as T
@@ -20,7 +33,7 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
-export async function uploadDocument(file: File, options: UploadDocumentOptions = {}) {
+export async function uploadDocument(file: File, options: UploadDocumentOptions = {}): Promise<UploadDocumentResponse | null> {
   const formData = new FormData()
   formData.append('file', file)
 
@@ -40,7 +53,7 @@ export async function uploadDocument(file: File, options: UploadDocumentOptions 
     method: 'POST',
     body: formData,
   })
-  const payload = await parseJsonSafe<{ detail?: string; error?: string }>(response)
+  const payload = await parseJsonSafe<UploadDocumentResponse & { detail?: string; error?: string }>(response)
   if (!response.ok) {
     throw new Error(payload?.detail || payload?.error || 'Failed to process document')
   }

@@ -3,15 +3,39 @@
 import { useState, useRef } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { uploadDocument } from '@/lib/api'
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { uploadDocument, type UploadDocumentResponse } from '@/lib/api'
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Info } from 'lucide-react'
+
+function formatSaiaStatus(status?: string | null) {
+  if (!status) return 'Unknown'
+  return status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function getSaiaStatusHelp(status?: string | null) {
+  if (status === 'not_processed') {
+    return 'This upload was added to the graph, but SAIA did not run because standalone uploads are stored as document uploads rather than message attachments.'
+  }
+  if (status === 'already_ingested') {
+    return 'This document hash was already present in the graph, so the upload was skipped and SAIA was not run again.'
+  }
+  if (status === 'disabled') {
+    return 'SAIA is currently disabled for this environment.'
+  }
+  if (status === 'failed') {
+    return 'The document was stored, but SAIA encountered an error while processing it.'
+  }
+  if (status === 'processed') {
+    return 'SAIA finished processing this upload.'
+  }
+  return null
+}
 
 export default function DocumentUpload() {
   const [file, setFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [result, setResult] = useState<UploadDocumentResponse | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,9 +55,11 @@ export default function DocumentUpload() {
     setIsUploading(true)
     setUploadStatus('idle')
     setErrorMessage('')
+    setResult(null)
 
     try {
-      await uploadDocument(file)
+      const uploadResult = await uploadDocument(file)
+      setResult(uploadResult)
       setUploadStatus('success')
       setFile(null)
 
@@ -120,9 +146,65 @@ export default function DocumentUpload() {
 
         {/* Status messages */}
         {uploadStatus === 'success' && (
-          <div className="flex items-center p-3 text-sm rounded bg-green-50 text-green-700 border border-green-200">
-            <CheckCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>Document uploaded and processed successfully!</span>
+          <div className="space-y-3 rounded border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            <div className="flex items-center">
+              <CheckCircle className="mr-2 h-4 w-4 flex-shrink-0" />
+              <span>{result?.message || 'Document uploaded and processed successfully.'}</span>
+            </div>
+
+            {result && (
+              <div className="space-y-3 rounded border border-green-200/70 bg-white/70 p-3 text-gray-800">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document ID</p>
+                    <p className="break-all font-mono text-xs">{result.doc_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">SAIA status</p>
+                    <p className="font-medium">{formatSaiaStatus(result.saia_status)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sender</p>
+                    <p>{result.sender || 'Unknown'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receivers</p>
+                    <p>{result.receivers?.length ? result.receivers.join(', ') : 'None detected'}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Subject</p>
+                    <p>{result.subject}</p>
+                  </div>
+                </div>
+
+                {getSaiaStatusHelp(result.saia_status) && (
+                  <div className="rounded border border-blue-200 bg-blue-50 p-3 text-blue-900">
+                    <div className="flex items-start">
+                      <Info className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <span>{getSaiaStatusHelp(result.saia_status)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {result.saia_last_error && (
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <p className="text-xs font-semibold uppercase tracking-wide">SAIA error</p>
+                    <p className="mt-1 break-words">{result.saia_last_error}</p>
+                  </div>
+                )}
+
+                {result.warnings && result.warnings.length > 0 && (
+                  <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <p className="text-xs font-semibold uppercase tracking-wide">Warnings</p>
+                    <ul className="mt-1 list-disc pl-4">
+                      {result.warnings.map((warning, index) => (
+                        <li key={`${result.doc_id}-warning-${index}`}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
