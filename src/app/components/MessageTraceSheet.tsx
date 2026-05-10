@@ -175,6 +175,77 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
   const [topGraph, setTopGraph] = useState<GraphSubgraphResponse | null>(null)
   const [topGraphError, setTopGraphError] = useState<string | null>(null)
   const [isLoadingTopGraph, setIsLoadingTopGraph] = useState(false)
+  const [documentContentById, setDocumentContentById] = useState<Record<string, string>>({})
+  
+  useEffect(() => {
+    setDocumentContentById({})
+  }, [message?.id])
+
+  const evidenceDocIdsKey = evidence
+    .map((item) => item.document?.doc_id || '')
+    .filter(Boolean)
+    .join('|')
+  
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+  
+    const controller = new AbortController()
+  
+    const loadMissingDocumentContent = async () => {
+      const docIds = (trace?.evidence ?? [])
+        .map((item) => item.document?.doc_id)
+        .filter((value): value is string => Boolean(value && value.trim()))
+  
+      const uniqueDocIds = Array.from(new Set(docIds))
+  
+      const targets = uniqueDocIds.filter((docId) => {
+        return !(trace?.evidence ?? []).some(
+          (item) => item.document?.doc_id === docId && Boolean(item.document?.content),
+        )
+      })
+  
+      if (targets.length === 0) {
+        return
+      }
+  
+      try {
+        const results = await Promise.all(
+          targets.map(async (docId) => {
+            const params = new URLSearchParams({ doc_id: docId })
+            const response = await fetch(`/api/debug-document?${params.toString()}`, {
+              signal: controller.signal,
+            })
+            if (!response.ok) {
+              return { docId, content: '' }
+            }
+            const payload = (await response.json()) as { doc_id?: string; content?: string | null }
+            return { docId, content: (payload.content ?? '') as string }
+          }),
+        )
+  
+        setDocumentContentById((current) => {
+          const next = { ...current }
+          results.forEach(({ docId, content }) => {
+            if (!Object.prototype.hasOwnProperty.call(next, docId)) {
+              next[docId] = content
+            }
+          })
+          return next
+        })
+      } catch {
+        // Best-effort only.
+      }
+    }
+  
+    void loadMissingDocumentContent()
+  
+    return () => {
+      controller.abort()
+    }
+    // evidenceDocIdsKey triggers reload when evidence set changes.
+  }, [open, message?.id, evidenceDocIdsKey])
 
   useEffect(() => {
     if (!open) {
@@ -337,6 +408,9 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
   const topEvidence = evidence[rankIndex]
   const rankLabel = `Top-${selectedRank}`
 
+  const resolvedChunkId =
+    topEvidence?.chunk_id || (topEvidence?.document?.doc_id ? `${topEvidence.document.doc_id}-chunk-0` : null)
+
   const hasTop1 = evidence.length >= 1
   const hasTop2 = evidence.length >= 2
   const hasTop3 = evidence.length >= 3
@@ -346,7 +420,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
       return
     }
 
-    const chunkId = topEvidence?.chunk_id
+    const chunkId = resolvedChunkId
     if (!chunkId) {
       setTopPath(null)
       setTopPathError(null)
@@ -417,7 +491,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
       return
     }
 
-    const chunkId = topEvidence?.chunk_id
+    const chunkId = resolvedChunkId
     if (!chunkId) {
       setTopGraph(null)
       setTopGraphError(null)
@@ -1057,6 +1131,11 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
                           <div className="mt-1 text-xs text-muted-foreground">
                             Doc ID: {item.document?.doc_id || 'unknown'} | Sender: {item.document?.sender || 'unknown'}
                           </div>
+                          {(item.document?.content || (item.document?.doc_id ? documentContentById[item.document.doc_id] : '')) && (
+                            <div className="mt-2 rounded bg-muted/40 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                              {item.document?.content || (item.document?.doc_id ? documentContentById[item.document.doc_id] : '')}
+                            </div>
+                          )}
                           {item.related_node?.display_name && (
                             <div className="mt-1 text-xs text-muted-foreground">
                               Related node: {item.related_node.display_name}
@@ -1209,7 +1288,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
                     <GraphGlobalSnapshotFlow trace={null} graph={topGraph} path={topPath} />
                   ) : (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      {topEvidence?.chunk_id
+                      {resolvedChunkId
                         ? `No Neo4j subgraph available for the ${rankLabel} result.`
                         : `No Neo4j subgraph is available because ${rankLabel} did not return an evidence chunk.`}
                     </div>

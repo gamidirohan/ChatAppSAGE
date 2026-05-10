@@ -24,6 +24,7 @@ export interface ChatTraceEvidence {
     sender?: string
     timestamp?: string
     source?: string
+    content?: string
   }
   related_node?: {
     label?: string
