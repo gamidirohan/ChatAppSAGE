@@ -52,6 +52,30 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
+function formatLabel(value?: string | null) {
+  return String(value || 'unknown').replace(/_/g, ' ')
+}
+
+function formatToolLabel(tool?: string | null) {
+  if ((tool || '').toLowerCase() === 'fulltext') {
+    return 'BM25'
+  }
+  return formatLabel(tool)
+}
+
+function buildAgentHandoffs(events: AgentEvent[]) {
+  const agentFlow = events
+    .filter((event) => event.event_type === 'agent_started' && event.agent)
+    .map((event) => event.agent as string)
+
+  const uniqueFlow = agentFlow.filter((agent, index) => index === 0 || agent !== agentFlow[index - 1])
+  const handoffs: string[] = []
+  for (let index = 1; index < uniqueFlow.length; index += 1) {
+    handoffs.push(`${formatLabel(uniqueFlow[index - 1])} -> ${formatLabel(uniqueFlow[index])}`)
+  }
+  return handoffs
+}
+
 type SageChatPayload = {
   answer?: string
   answer_payload?: Message['answerPayload']
@@ -389,7 +413,7 @@ export default function ChatWindow({
   const [traceMessage, setTraceMessage] = useState<Message | null>(null)
   const [isTraceOpen, setIsTraceOpen] = useState(false)
   const [forceAdvancedTrace, setForceAdvancedTrace] = useState(false)
-  const [thinkingMessage, setThinkingMessage] = useState<string | null>(null)
+  const [thinkingMessage, setThinkingMessage] = useState<Message | null>(null)
   const [isThinkingOpen, setIsThinkingOpen] = useState(false)
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
@@ -955,7 +979,7 @@ export default function ChatWindow({
                                 type="button"
                                 className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
                                 onClick={() => {
-                                  setThinkingMessage(message.thinking?.join('\n') || null)
+                                  setThinkingMessage(message)
                                   setIsThinkingOpen(true)
                                 }}
                                 aria-label="Show thinking"
@@ -1089,13 +1113,125 @@ export default function ChatWindow({
       />
       {thinkingMessage && (
         <Sheet open={isThinkingOpen} onOpenChange={setIsThinkingOpen}>
-          <SheetContent side="right" className="w-full max-w-full sm:max-w-xl">
+          <SheetContent side="right" className="w-full max-w-full sm:max-w-2xl">
             <SheetHeader>
               <SheetTitle>Thinking</SheetTitle>
-              <SheetDescription>Model reasoning (sanitized)</SheetDescription>
+              <SheetDescription>Thinking summary first, then the recorded agent flow and tool usage for this answer.</SheetDescription>
             </SheetHeader>
             <ScrollArea className="mt-4 h-[80vh] pr-2">
-              <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-100">{thinkingMessage}</pre>
+              <div className="space-y-6">
+                <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                  <div className="text-sm font-semibold">Thinking summary</div>
+                  <div className="space-y-2 text-sm text-gray-800 dark:text-gray-100">
+                    {(thinkingMessage.thinking || []).map((item, index) => (
+                      <div key={`thinking-summary-${index}`} className="rounded border bg-background px-3 py-2">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {thinkingMessage.trace?.agentic && (
+                  <>
+                    <section className="space-y-3 rounded-lg border p-4">
+                      <div className="text-sm font-semibold">Agent run summary</div>
+                      <div className="grid gap-3 sm:grid-cols-4">
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Status</div>
+                          <div className="mt-1 font-medium">{formatLabel(thinkingMessage.trace.agentic.status || 'unknown')}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Steps recorded</div>
+                          <div className="mt-1 font-medium">
+                            {(thinkingMessage.trace.agentic.route_history?.length || thinkingMessage.trace.agentic.events?.length || 0)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Tool calls</div>
+                          <div className="mt-1 font-medium">{thinkingMessage.trace.agentic.tool_calls?.length || 0}</div>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">Retrieval rounds</div>
+                          <div className="mt-1 font-medium">{thinkingMessage.trace.agentic.rounds?.length || 0}</div>
+                        </div>
+                      </div>
+                      {thinkingMessage.trace.agentic.events && thinkingMessage.trace.agentic.events.length > 0 && (
+                        <AgentExecutionRail events={thinkingMessage.trace.agentic.events} />
+                      )}
+                    </section>
+
+                    {buildAgentHandoffs(thinkingMessage.trace.agentic.events || []).length > 0 && (
+                      <section className="space-y-2 rounded-lg border p-4">
+                        <div className="text-sm font-semibold">Agent handoffs</div>
+                        <div className="space-y-2">
+                          {buildAgentHandoffs(thinkingMessage.trace.agentic.events || []).map((handoff, index) => (
+                            <div key={`handoff-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                              Step {index + 1}: {handoff}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {thinkingMessage.trace.agentic.route_history && thinkingMessage.trace.agentic.route_history.length > 0 && (
+                      <section className="space-y-2 rounded-lg border p-4">
+                        <div className="text-sm font-semibold">Execution route</div>
+                        <div className="space-y-2">
+                          {thinkingMessage.trace.agentic.route_history.slice(-20).map((event, index) => (
+                            <div key={event.event_id || `route-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                              {formatLabel(event.agent || 'agent')} | {formatLabel(event.stage || 'stage')} | {formatLabel(event.status || 'unknown')}
+                              {event.message && <div className="mt-1">{event.message}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {thinkingMessage.trace.agentic.tool_calls && thinkingMessage.trace.agentic.tool_calls.length > 0 && (
+                      <section className="space-y-2 rounded-lg border p-4">
+                        <div className="text-sm font-semibold">Tool calls</div>
+                        <div className="space-y-2">
+                          {thinkingMessage.trace.agentic.tool_calls.map((toolCall, index) => (
+                            <div key={`${toolCall.tool || 'tool'}-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                              Tool: {formatToolLabel(toolCall.tool)} | Attempt: {toolCall.attempt ?? index + 1} | Status: {formatLabel(toolCall.status || 'unknown')} | Results: {toolCall.result_count ?? 0} | Duration: {toolCall.duration_ms ?? 0} ms
+                              {toolCall.error && <div className="mt-1 text-red-500">{toolCall.error}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {thinkingMessage.trace.agentic.rounds && thinkingMessage.trace.agentic.rounds.length > 0 && (
+                      <section className="space-y-2 rounded-lg border p-4">
+                        <div className="text-sm font-semibold">Retrieval rounds</div>
+                        <div className="space-y-2">
+                          {thinkingMessage.trace.agentic.rounds.map((round, index) => (
+                            <div key={`${round.tool || 'round'}-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                              Round {round.attempt ?? index + 1}: {formatToolLabel(round.tool)} | Evidence refs: {round.evidence_ref_count ?? 0} | Validated: {round.validated_evidence_count ?? 0} | Enough context: {round.enough_context ? 'yes' : 'no'}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {thinkingMessage.trace.agentic.events && thinkingMessage.trace.agentic.events.length > 0 && (
+                      <section className="space-y-2 rounded-lg border p-4">
+                        <div className="text-sm font-semibold">Event log</div>
+                        <div className="space-y-1 rounded border bg-muted/20 p-2 text-xs text-muted-foreground">
+                          {thinkingMessage.trace.agentic.events.slice(-30).map((evt, idx) => (
+                            <div key={`${evt.agent || evt.tool || 'evt'}-${idx}`} className="flex flex-wrap gap-2">
+                              <span className="font-medium">{formatLabel(evt.agent || evt.tool || 'agent')}</span>
+                              <span>{formatLabel(evt.stage || 'stage')}</span>
+                              <span>{formatLabel(evt.status || 'pending')}</span>
+                              {evt.message && <span className="truncate">{evt.message}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+                  </>
+                )}
+              </div>
             </ScrollArea>
           </SheetContent>
         </Sheet>

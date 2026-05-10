@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
@@ -13,19 +13,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Message, MessageSAIAInsight, SAIAClaim, SAIAGroundingReference } from '@/types'
-import AgentExecutionRail from '@/app/components/AgentExecutionRail'
 import GraphGlobalSnapshotFlow, { type GraphRetrievalPathResponse, type GraphSubgraphResponse } from '@/app/components/GraphGlobalSnapshotFlow'
-
-const STAGE_LABELS = [
-  { key: 'planner', label: 'Planner', agents: ['planner'] },
-  { key: 'retriever', label: 'Retriever', agents: ['retriever'] },
-  { key: 'semantic', label: 'Semantic', agents: ['semantic'] },
-  { key: 'fulltext', label: 'BM25', agents: ['fulltext'] },
-  { key: 'graph', label: 'Graph', agents: ['graph'] },
-  { key: 'reasoner', label: 'Reasoner', agents: ['reasoner'] },
-  { key: 'generator', label: 'Generator', agents: ['generator'] },
-  { key: 'critic', label: 'Critic', agents: ['critic'] },
-]
 
 type GraphCount = {
   label: string
@@ -498,24 +486,6 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
     !hasTop2 ? 'Top-2 not available' : null,
     !hasTop3 ? 'Top-3 not available' : null,
   ].filter(Boolean) as string[]
-  const [showAdvancedTrace, setShowAdvancedTrace] = useState(Boolean(forceAdvanced))
-
-  useEffect(() => {
-    setShowAdvancedTrace(Boolean(forceAdvanced))
-  }, [forceAdvanced])
-
-  const executedStages = useMemo(() => {
-    if (!agenticTrace?.events) return []
-    return STAGE_LABELS.filter((stage) => agenticTrace.events?.some((event) => {
-      const agent = event.agent?.toLowerCase()
-      const tool = event.tool?.toLowerCase()
-      const matches = stage.agents.includes(agent || '') || stage.agents.includes(tool || '')
-      const status = (event.status || '').toLowerCase()
-      const done = ['completed', 'needs_review', 'running'].includes(status)
-      return matches && done
-    })).map((stage) => stage.label)
-  }, [agenticTrace?.events])
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full max-w-full sm:max-w-2xl p-0">
@@ -966,14 +936,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
 
               {(isAnswerMessage || trace) && (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold">Retrieval overview</div>
-                    {agenticTrace && (
-                      <Button variant="ghost" size="sm" onClick={() => setShowAdvancedTrace((prev) => !prev)}>
-                        {showAdvancedTrace ? 'Hide advanced trace' : 'Show advanced trace'}
-                      </Button>
-                    )}
-                  </div>
+                  <div className="text-sm font-semibold">Retrieval overview</div>
                   {trace ? (
                     <div className="space-y-3">
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -1014,15 +977,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
                             <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
                               Stop: {formatLabel(agenticTrace.stop_reason || 'unknown')}
                             </span>
-                            {executedStages.length > 0 && (
-                              <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
-                                Executed: {executedStages.join(', ')}
-                              </span>
-                            )}
                           </div>
-                          {agenticTrace.events && agenticTrace.events.length > 0 && (
-                            <AgentExecutionRail events={agenticTrace.events} />
-                          )}
                           {agenticTrace.planner?.required_evidence && agenticTrace.planner.required_evidence.length > 0 && (
                             <div className="space-y-2">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground">Required evidence</div>
@@ -1038,67 +993,6 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
                           {agenticTrace.planner?.selector?.reasons && agenticTrace.planner.selector.reasons.length > 0 && (
                             <div className="text-sm text-muted-foreground">
                               {agenticTrace.planner.selector.reasons.join(' ')}
-                            </div>
-                          )}
-
-                          {showAdvancedTrace && (
-                            <div className="space-y-3 border-t pt-3">
-                              {agenticTrace.route_history && agenticTrace.route_history.length > 0 && (
-                                <div className="space-y-2">
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Execution route</div>
-                                  {agenticTrace.route_history.slice(-20).map((event, index) => (
-                                    <div key={event.event_id || `${event.agent}-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                                      {formatLabel(event.agent || 'agent')} | {formatLabel(event.stage || 'stage')} | {formatLabel(event.status || 'unknown')}
-                                      {event.message && <div className="mt-1">{event.message}</div>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {agenticTrace.tool_calls && agenticTrace.tool_calls.length > 0 && (
-                                <div className="space-y-2">
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Tool calls</div>
-                                  {agenticTrace.tool_calls.map((toolCall, index) => (
-                                    <div key={`${toolCall.tool || 'tool'}-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                                      Tool: {toolCall.tool || 'unknown'} | Attempt: {toolCall.attempt ?? index + 1} | Status: {formatLabel(toolCall.status || 'unknown')} | Results: {toolCall.result_count ?? 0} | Duration: {toolCall.duration_ms ?? 0} ms
-                                      {toolCall.error && <div className="mt-1 text-red-500">{toolCall.error}</div>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {agenticTrace.rounds && agenticTrace.rounds.length > 0 && (
-                                <div className="space-y-2">
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Retrieval rounds</div>
-                                  {agenticTrace.rounds.map((round, index) => (
-                                    <div key={`${round.tool || 'round'}-${index}`} className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                                      Round {round.attempt ?? index + 1}: {round.tool || 'unknown'} | Evidence refs: {round.evidence_ref_count ?? 0} | Validated: {round.validated_evidence_count ?? 0} | Enough context: {round.enough_context ? 'yes' : 'no'}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {agenticTrace.events && agenticTrace.events.length > 0 && (
-                                <div className="space-y-2">
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Event log</div>
-                                  <div className="space-y-1 rounded border bg-muted/20 p-2 text-xs text-muted-foreground">
-                                    {agenticTrace.events.slice(-30).map((evt, idx) => (
-                                      <div key={`${evt.agent || 'evt'}-${idx}`} className="flex flex-wrap gap-2">
-                                        <span className="font-medium">{formatLabel(evt.agent || evt.tool || 'agent')}</span>
-                                        <span>{formatLabel(evt.stage || 'stage')}</span>
-                                        <span>{formatLabel(evt.status || 'pending')}</span>
-                                        {evt.message && <span className="truncate">{evt.message}</span>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {agenticTrace.critic?.issues && agenticTrace.critic.issues.length > 0 && (
-                                <div className="text-xs text-amber-600">
-                                  Critic issues: {agenticTrace.critic.issues.map((issue) => formatLabel(issue)).join(', ')}
-                                </div>
-                              )}
                             </div>
                           )}
                         </div>
