@@ -23,6 +23,25 @@ async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   }
 }
 
+function pinSageConversation(conversations: ConversationSummary[]): ConversationSummary[] {
+  return [...conversations].sort((left, right) => {
+    const leftIsSage = left.type === 'sage'
+    const rightIsSage = right.type === 'sage'
+    const leftIsQa = left.title.trim().toUpperCase().startsWith('QA')
+    const rightIsQa = right.title.trim().toUpperCase().startsWith('QA')
+
+    if (leftIsSage !== rightIsSage) {
+      return leftIsSage ? -1 : 1
+    }
+
+    if (leftIsQa !== rightIsQa) {
+      return leftIsQa ? 1 : -1
+    }
+
+    return 0
+  })
+}
+
 export default function ChatPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
@@ -152,18 +171,20 @@ export default function ChatPage() {
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationId) || null
 
-  const filteredConversations = conversations.filter((conversation) => {
-    if (!contactSearch.trim()) {
-      return true
-    }
+  const filteredConversations = pinSageConversation(
+    conversations.filter((conversation) => {
+      if (!contactSearch.trim()) {
+        return true
+      }
 
-    const query = contactSearch.toLowerCase()
-    return (
-      conversation.title.toLowerCase().includes(query) ||
-      conversation.id.toLowerCase().includes(query) ||
-      (conversation.otherUser?.email || '').toLowerCase().includes(query)
-    )
-  })
+      const query = contactSearch.toLowerCase()
+      return (
+        conversation.title.toLowerCase().includes(query) ||
+        conversation.id.toLowerCase().includes(query) ||
+        (conversation.otherUser?.email || '').toLowerCase().includes(query)
+      )
+    })
+  )
 
   const userList = (
     <div className="w-full h-full min-h-0 overflow-y-auto scrollbar-hidden bg-white dark:bg-gray-900">

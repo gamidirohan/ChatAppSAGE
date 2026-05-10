@@ -840,7 +840,7 @@ export default function ChatWindow({
                         : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600'
                     }`}
                   >
-                    {isSageAnswer && showRetrievalRail && (
+                    {isSageAnswer && (
                       <div className="mb-3">
                         <AgentExecutionRail
                           events={persistedAgentEvents}
@@ -898,25 +898,8 @@ export default function ChatWindow({
                     <span>{formatMessageTime(message.sentAt)}</span>
                     <div className="flex items-center gap-1">
                       {isSageAnswer && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
-                                onClick={() =>
-                                  setOpenRetrievalMessageId((current) => (current === message.id ? null : message.id))
-                                }
-                                aria-label="Toggle retrieval overview"
-                              >
-                                <CircuitBoard className="h-3.5 w-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{showRetrievalRail ? 'Hide retrieval overview' : 'Show retrieval overview'}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        // Retrieval overview is always shown for SAGE answers
+                        null
                       )}
                       <TooltipProvider>
                         <Tooltip>
@@ -948,8 +931,9 @@ export default function ChatWindow({
                                 className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
                                 onClick={() => {
                                   setTraceMessage(message)
+                                  // If there is an advanced agentic trace, open advanced view; otherwise open insight view
+                                  setForceAdvancedTrace(Boolean(message.trace?.agentic))
                                   setIsTraceOpen(true)
-                                  setForceAdvancedTrace(false)
                                 }}
                                 aria-label={`Open ${insightLabel.toLowerCase()}`}
                               >
@@ -957,34 +941,12 @@ export default function ChatWindow({
                               </button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>{insightLabel}</p>
+                              <p>{message.trace?.agentic ? 'Advanced trace' : insightLabel}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                      {showTraceButton && message.trace?.agentic && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="rounded-full p-1 opacity-50 transition hover:bg-gray-100 hover:opacity-100 dark:hover:bg-gray-800"
-                                onClick={() => {
-                                  setTraceMessage(message)
-                                  setForceAdvancedTrace(true)
-                                  setIsTraceOpen(true)
-                                }}
-                                aria-label="Open advanced trace"
-                              >
-                                <CircuitBoard className="h-3.5 w-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Advanced trace</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
+                      {/* Advanced trace icon removed; Info button opens advanced trace when available */}
                       {Array.isArray(message.thinking) && message.thinking.length > 0 && (
                         <TooltipProvider>
                           <Tooltip>
