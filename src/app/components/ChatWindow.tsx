@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { AgentEvent, ConversationSummary, FileAttachment, Message, User } from '@/types'
+import { AgentEvent, AgenticTrace, ConversationSummary, FileAttachment, Message, User } from '@/types'
 
 type Props = {
   currentUserId: string
@@ -61,6 +61,25 @@ function formatToolLabel(tool?: string | null) {
     return 'BM25'
   }
   return formatLabel(tool)
+}
+
+function getRemainingCriticIssues(agentic?: AgenticTrace | null) {
+  if (agentic?.remaining_critic_issues?.length) {
+    return agentic.remaining_critic_issues
+  }
+  if (agentic?.critic?.passed === false && agentic.critic.issues?.length) {
+    return agentic.critic.issues
+  }
+  return []
+}
+
+function formatCriticRetry(agentic?: AgenticTrace | null) {
+  if (!agentic?.retry_attempted) {
+    return 'Not attempted'
+  }
+  const tool = agentic.retry_tool ? ` via ${formatToolLabel(agentic.retry_tool)}` : ''
+  const outcome = agentic.retry_succeeded ? 'succeeded' : 'failed'
+  return `Attempted${tool}; ${outcome}`
 }
 
 function buildAgentHandoffs(events: AgentEvent[]) {
@@ -182,6 +201,7 @@ function formatMessageForCopy(message: Message) {
 
   const agentic = message.trace?.agentic
   if (agentic) {
+    const remainingIssues = getRemainingCriticIssues(agentic)
     const toolCalls = agentic.tool_calls?.map((toolCall) => {
       const pieces = [
         toolCall.tool || 'unknown',
@@ -196,6 +216,8 @@ function formatMessageForCopy(message: Message) {
         `Status: ${agentic.status || 'unknown'}`,
         `Planner: ${agentic.planner?.intent || agentic.planner?.strategy || agentic.planner?.planner || 'unknown'}`,
         `Stop reason: ${agentic.stop_reason || 'unknown'}`,
+        `Critic retry: ${formatCriticRetry(agentic)}`,
+        remainingIssues.length ? `Final critic issues:\n${remainingIssues.map((issue) => `- ${issue}`).join('\n')}` : null,
         toolCalls?.length ? `Tool calls:\n${toolCalls.join('\n')}` : null,
       ]
         .filter(Boolean)
@@ -391,6 +413,51 @@ function buildMessageAgentRailEvents(message: Message): AgentEvent[] {
   }
 
   return countRailStageCoverage(events) >= 2 ? events : buildFallbackPipelineEvents(message)
+}
+
+function CriticOutcomePanel({ agentic }: { agentic: AgenticTrace }) {
+  const remainingIssues = getRemainingCriticIssues(agentic)
+  const history = agentic.critic_history ?? []
+  if (!agentic.retry_attempted && remainingIssues.length === 0 && history.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 text-sm dark:border-amber-700/70 dark:bg-amber-950/20">
+      <div className="font-semibold">Critic outcome</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded border bg-background px-3 py-2">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Final verdict</div>
+          <div className="mt-1 font-medium">{agentic.critic?.passed ? 'Passed' : 'Review required'}</div>
+        </div>
+        <div className="rounded border bg-background px-3 py-2">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Retry</div>
+          <div className="mt-1 font-medium">{formatCriticRetry(agentic)}</div>
+        </div>
+      </div>
+      {history.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Critic checks</div>
+          {history.map((entry, index) => (
+            <div key={`critic-check-${entry.attempt ?? index}`} className="rounded border bg-background px-3 py-2 text-xs text-muted-foreground">
+              Check {entry.attempt ?? index + 1}: {entry.revision ? 'retry' : 'initial'} | {entry.passed ? 'passed' : 'review'}
+              {entry.issues?.length ? <div className="mt-1">Issues: {entry.issues.join(', ')}</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
+      {remainingIssues.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Remaining issues</div>
+          {remainingIssues.map((issue) => (
+            <div key={issue} className="rounded border bg-background px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              {issue}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function ChatWindow({
@@ -1155,6 +1222,7 @@ export default function ChatWindow({
                           <div className="mt-1 font-medium">{thinkingMessage.trace.agentic.rounds?.length || 0}</div>
                         </div>
                       </div>
+                      <CriticOutcomePanel agentic={thinkingMessage.trace.agentic} />
                       {thinkingMessage.trace.agentic.events && thinkingMessage.trace.agentic.events.length > 0 && (
                         <AgentExecutionRail events={thinkingMessage.trace.agentic.events} />
                       )}

@@ -137,6 +137,19 @@ export interface AgenticTrace {
     grounded_evidence_count?: number
     provenance_count?: number
   }
+  critic_history?: Array<{
+    attempt?: number
+    revision?: boolean
+    passed?: boolean
+    retryable?: boolean
+    issues?: string[]
+    grounded_evidence_count?: number
+    provenance_count?: number
+  }>
+  retry_attempted?: boolean
+  retry_tool?: string | null
+  retry_succeeded?: boolean | null
+  remaining_critic_issues?: string[]
   status?: string
 }
 

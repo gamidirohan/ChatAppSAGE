@@ -12,7 +12,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Message, MessageSAIAInsight, SAIAClaim, SAIAGroundingReference } from '@/types'
+import { AgenticTrace, Message, MessageSAIAInsight, SAIAClaim, SAIAGroundingReference } from '@/types'
 import GraphGlobalSnapshotFlow, { type GraphRetrievalPathResponse, type GraphSubgraphResponse } from '@/app/components/GraphGlobalSnapshotFlow'
 
 type GraphCount = {
@@ -65,6 +65,75 @@ function normalizeGraphSnapshot(payload: any): GraphSnapshot {
 
 function formatLabel(label?: string | null) {
   return String(label || 'unknown').replace(/_/g, ' ')
+}
+
+function formatToolLabel(tool?: string | null) {
+  if ((tool || '').toLowerCase() === 'fulltext') {
+    return 'BM25'
+  }
+  return formatLabel(tool)
+}
+
+function getRemainingCriticIssues(agentic?: AgenticTrace | null) {
+  if (agentic?.remaining_critic_issues?.length) {
+    return agentic.remaining_critic_issues
+  }
+  if (agentic?.critic?.passed === false && agentic.critic.issues?.length) {
+    return agentic.critic.issues
+  }
+  return []
+}
+
+function formatCriticRetry(agentic?: AgenticTrace | null) {
+  if (!agentic?.retry_attempted) {
+    return 'Not attempted'
+  }
+  const tool = agentic.retry_tool ? ` via ${formatToolLabel(agentic.retry_tool)}` : ''
+  const outcome = agentic.retry_succeeded ? 'succeeded' : 'failed'
+  return `Attempted${tool}; ${outcome}`
+}
+
+function CriticOutcomeBlock({ agentic }: { agentic: AgenticTrace }) {
+  const remainingIssues = getRemainingCriticIssues(agentic)
+  const history = agentic.critic_history ?? []
+  if (!agentic.retry_attempted && remainingIssues.length === 0 && history.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3 text-sm dark:border-amber-700/70 dark:bg-amber-950/20">
+      <div className="font-semibold">Critic outcome</div>
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+          Final: {agentic.critic?.passed ? 'passed' : 'review required'}
+        </span>
+        <span className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+          Retry: {formatCriticRetry(agentic)}
+        </span>
+      </div>
+      {history.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Critic checks</div>
+          {history.map((entry, index) => (
+            <div key={`critic-check-${entry.attempt ?? index}`} className="rounded border bg-background px-3 py-2 text-xs text-muted-foreground">
+              Check {entry.attempt ?? index + 1}: {entry.revision ? 'retry' : 'initial'} | {entry.passed ? 'passed' : 'review'}
+              {entry.issues?.length ? <div className="mt-1">Issues: {entry.issues.join(', ')}</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
+      {remainingIssues.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Remaining issues</div>
+          {remainingIssues.map((issue) => (
+            <div key={issue} className="rounded border bg-background px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              {issue}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function normalizeSaiaStatus(status?: string | null) {
@@ -1069,6 +1138,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
                               {agenticTrace.planner.selector.reasons.join(' ')}
                             </div>
                           )}
+                          <CriticOutcomeBlock agentic={agenticTrace} />
                         </div>
                       )}
                       {shouldSkipSaiaFetch && (
