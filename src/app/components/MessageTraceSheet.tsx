@@ -15,6 +15,8 @@ import {
 import { AgenticTrace, Message, MessageSAIAInsight, SAIAClaim, SAIAGroundingReference } from '@/types'
 import GraphGlobalSnapshotFlow, { type GraphRetrievalPathResponse, type GraphSubgraphResponse } from '@/app/components/GraphGlobalSnapshotFlow'
 
+const GRAPH_SNAPSHOT_TIMEOUT_MS = 22000
+
 type GraphCount = {
   label: string
   count: number
@@ -35,6 +37,8 @@ type Props = {
 }
 
 function normalizeGraphSnapshot(payload: any): GraphSnapshot {
+  const payloadTotalNodes = Number(payload?.total_nodes ?? payload?.totalNodes)
+  const payloadTotalRelationships = Number(payload?.total_relationships ?? payload?.totalRelationships)
   const nodeCounts = Array.isArray(payload?.node_counts)
     ? payload.node_counts.map((item: any) => ({
         label: String(item.Label ?? item.label ?? 'Unknown'),
@@ -56,8 +60,12 @@ function normalizeGraphSnapshot(payload: any): GraphSnapshot {
       }))
 
   return {
-    totalNodes: nodeCounts.reduce((sum: number, item: GraphCount) => sum + item.count, 0),
-    totalRelationships: relationshipCounts.reduce((sum: number, item: GraphCount) => sum + item.count, 0),
+    totalNodes: Number.isFinite(payloadTotalNodes)
+      ? payloadTotalNodes
+      : nodeCounts.reduce((sum: number, item: GraphCount) => sum + item.count, 0),
+    totalRelationships: Number.isFinite(payloadTotalRelationships)
+      ? payloadTotalRelationships
+      : relationshipCounts.reduce((sum: number, item: GraphCount) => sum + item.count, 0),
     nodeCounts,
     relationshipCounts,
   }
@@ -349,7 +357,7 @@ export default function MessageTraceSheet({ message, open, onOpenChange, forceAd
       timeoutId = window.setTimeout(() => {
         timedOut = true
         controller.abort()
-      }, 12000)
+      }, GRAPH_SNAPSHOT_TIMEOUT_MS)
 
       try {
         const response = await fetch('/api/debug-graph?summary_only=1', { signal: controller.signal, cache: 'no-store' })
