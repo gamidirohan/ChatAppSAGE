@@ -730,11 +730,6 @@ export default function ChatWindow({
         return
       }
 
-      const history = messages.slice(-10).map((message) => ({
-        role: message.senderId === currentUserId ? 'user' : 'assistant',
-        content: message.content,
-      }))
-
       const localStartEvent: AgentEvent = {
         event_id: `local-${Date.now()}`,
         run_id: 'pending',
@@ -752,7 +747,6 @@ export default function ChatWindow({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: plainTextMessage,
-          history,
         }),
       })
       if (!response.ok) {
